@@ -43,6 +43,8 @@ import {
   streamSse,
   resumeSse,
   uploadDocument as uploadDocumentApi,
+  getThreadHistory,
+  listThreads,
   type AuthState,
   type RoleItem,
   type ToolFeedback
@@ -69,7 +71,11 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([initialAssistantMessage]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [threadId] = useState(() => crypto.randomUUID());
+  const [threadId, setThreadId] = useState<string>(() => {
+    if (typeof window === "undefined") return crypto.randomUUID();
+    return window.localStorage.getItem("know-agent-thread") || crypto.randomUUID();
+  });
+  const [threads, setThreads] = useState<{ thread_id: string }[]>([]);
   const [workflowSession, setWorkflowSession] = useState(false);
   const [workflowMessages, setWorkflowMessages] = useState<ChatMessage[]>([]);
   const [workflowInput, setWorkflowInput] = useState("帮我做一份关于 AI 发展的 PPT，面向技术团队，约 10 页");
@@ -245,6 +251,47 @@ export default function Home() {
     }
   }
 
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("know-agent-thread", threadId);
+  }, [threadId]);
+
+  async function loadThreads() {
+    if (!token || !user) return;
+    try {
+      const data = await listThreads(token, "common_agent", user.name);
+      setThreads(data);
+    } catch { /* ignore */ }
+  }
+
+  async function loadHistory(tid: string) {
+    if (!token || !user) return;
+    try {
+      const history = await getThreadHistory(token, "common_agent", user.name, tid);
+      setMessages([
+        initialAssistantMessage,
+        ...history.map((h) => makeMessage(h.role === "user" ? "user" : "assistant", h.content))
+      ]);
+    } catch {
+      setMessages([initialAssistantMessage]);
+    }
+  }
+
+  function createNewThread() {
+    setThreadId(crypto.randomUUID());
+    setMessages([initialAssistantMessage]);
+    setPendingApproval(null);
+  }
+
+  function switchThread(tid: string) {
+    setThreadId(tid);
+    setPendingApproval(null);
+    loadHistory(tid);
+  }
+
+  useEffect(() => {
+    if (activeTab === "assistant" && token) loadThreads();
+  }, [activeTab, token]);
+
   async function runWorkflow() {
     const content = workflowInput.trim();
     if (!content || workflowRunning) return;
@@ -413,6 +460,21 @@ export default function Home() {
               </button>
             ))}
           </nav>
+          {activeTab === "assistant" ? (
+            <div className="px-3 pb-2">
+              <div className="flex items-center justify-between px-2 py-1">
+                <span className="text-xs font-semibold text-[#7a7a73]">会话</span>
+                <button onClick={createNewThread} className="text-xs text-[#5f5f5a] hover:text-[#0d0d0d]">+ 新建</button>
+              </div>
+              <div className="grid max-h-48 gap-1 overflow-y-auto">
+                {threads.map((t) => (
+                  <button key={t.thread_id} onClick={() => switchThread(t.thread_id)} className={clsx("truncate rounded-lg px-3 py-2 text-left text-xs", t.thread_id === threadId ? "bg-[#ecece7] font-medium" : "text-[#5f5f5a] hover:bg-[#f0f0eb]")}>
+                    {t.thread_id.slice(0, 8)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="mt-auto border-t border-[#e7e7e1] p-3">
             <div className="flex items-center gap-3 rounded-lg px-3 py-2">
               <div className="grid h-8 w-8 place-items-center rounded-full bg-[#ecece7]">

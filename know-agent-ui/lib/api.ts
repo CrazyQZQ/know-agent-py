@@ -308,6 +308,14 @@ export async function getThreadHistory(
   );
 }
 
+export async function listThreads(token: string | null, appName: string, userId: string) {
+  return request<{ thread_id: string }[]>(
+    `/apps/${appName}/users/${userId}/threads`,
+    {},
+    token
+  );
+}
+
 // HITL 工具审批恢复
 export type ToolFeedback = {
   id: string;
