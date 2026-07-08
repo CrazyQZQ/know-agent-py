@@ -1,11 +1,4 @@
-"""认证路由 — 登录/注销/当前用户（后端代理 Casdoor）.
-
-- POST /api/auth/login  用户名密码登录（代理 Casdoor password grant，返回 token + 用户信息）
-- POST /api/auth/logout 注销（调 Casdoor revoke + 清后端 token 缓存）
-- GET  /api/auth/me     当前用户信息（受认证保护，前端验证 token 有效性用）
-
-login/logout 公开访问；me 需带 Casdoor Bearer token。
-"""
+"""Authentication routes for login, logout, and current-user checks."""
 
 import requests
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -32,7 +25,7 @@ class LoginResponse(BaseModel):
 
 
 def _fetch_userinfo(token: str) -> dict:
-    """调 Casdoor /api/userinfo 获取用户信息."""
+    """Fetch user profile from Casdoor."""
     s = get_settings()
     try:
         r = requests.get(
@@ -43,16 +36,30 @@ def _fetch_userinfo(token: str) -> dict:
         if r.status_code == 200:
             return r.json()
     except Exception as e:
-        logger.warning("[auth] 获取 userinfo 失败: {}", e)
+        logger.warning("[auth] failed to fetch Casdoor userinfo: {}", e)
     return {}
 
 
 @router.post("/login", response_model=LoginResponse)
 def login(req: LoginRequest) -> LoginResponse:
-    """用户名密码登录（后端代理 Casdoor password grant）."""
+    """Login by proxying Casdoor's password grant."""
     s = get_settings()
     if not s.casdoor_enabled:
-        raise HTTPException(500, "Casdoor 未启用，无法登录")
+        raise HTTPException(500, "Casdoor is not enabled; login is unavailable")
+
+    missing = []
+    if not s.casdoor_endpoint:
+        missing.append("CASDOOR_ENDPOINT")
+    if not s.casdoor_client_id:
+        missing.append("CASDOOR_CLIENT_ID")
+    if not s.casdoor_client_secret:
+        missing.append("CASDOOR_CLIENT_SECRET")
+    if missing:
+        raise HTTPException(
+            500,
+            f"Casdoor OAuth client config missing: {', '.join(missing)}",
+        )
+
     try:
         resp = requests.post(
             f"{s.casdoor_endpoint.rstrip('/')}/api/login/oauth/access_token",
@@ -67,19 +74,35 @@ def login(req: LoginRequest) -> LoginResponse:
             timeout=15,
         )
     except Exception as e:
-        raise HTTPException(502, f"Casdoor 不可达: {e}")
+        raise HTTPException(502, f"Casdoor is unreachable: {e}")
+
     if resp.status_code != 200:
-        raise HTTPException(401, "用户名或密码错误")
+        try:
+            err_data = resp.json()
+        except ValueError:
+            err_data = {"error": resp.text}
+        upstream_error = (
+            err_data.get("error_description")
+            or err_data.get("error")
+            or resp.text
+        )
+        logger.warning(
+            "[auth] Casdoor password grant failed: status={} error={}",
+            resp.status_code,
+            upstream_error,
+        )
+        raise HTTPException(401, f"Casdoor login failed: {upstream_error}")
+
     data = resp.json()
     token = data.get("access_token")
     if not token:
         raise HTTPException(
-            401, f"Casdoor 登录失败: {data.get('error_description', data)}"
+            401, f"Casdoor login failed: {data.get('error_description', data)}"
         )
     info = _fetch_userinfo(token)
     roles = info.get(s.casdoor_roles_field) or []
     logger.info(
-        "[auth] 用户登录: {} roles={}",
+        "[auth] user logged in: {} roles={}",
         info.get("preferred_username") or info.get("sub"),
         roles,
     )
@@ -98,10 +121,7 @@ def login(req: LoginRequest) -> LoginResponse:
 
 @router.post("/logout")
 def logout(authorization: str | None = Header(default=None)) -> dict:
-    """注销：调 Casdoor revoke（best effort）+ 清后端 token 缓存.
-
-    JWT 无状态，revoke 可能不立即生效；真正失效主要靠前端清除 token。
-    """
+    """Best-effort token revoke plus local cache cleanup."""
     if not authorization or not authorization.lower().startswith("bearer "):
         return {"ok": True}
     token = authorization[7:].strip()
@@ -117,18 +137,16 @@ def logout(authorization: str | None = Header(default=None)) -> dict:
             timeout=5,
         )
     except Exception as e:
-        logger.debug("[auth] Casdoor revoke 异常（忽略）: {}", e)
-    # 清后端 token 验证缓存，避免登出用户继续用缓存
+        logger.debug("[auth] ignoring Casdoor revoke error: {}", e)
     _token_cache.pop(token, None)
-    # 加入注销黑名单，让 token 立即失效（JWT 无状态，需后端维护黑名单）
     revoke_token(token)
-    logger.info("[auth] 用户注销")
+    logger.info("[auth] user logged out")
     return {"ok": True}
 
 
 @router.get("/me", dependencies=[Depends(verify_auth)])
 def me() -> dict:
-    """获取当前登录用户信息（验证 token 有效性 + 返回角色）."""
+    """Return the current authenticated user and roles."""
     return {
         "user": get_current_user(),
         "roles": get_current_roles(),

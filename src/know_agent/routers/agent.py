@@ -32,8 +32,8 @@ async def run_sse(req: AgentRunRequest):
     }
     inputs = {"messages": [HumanMessage(content=req.newMessage.content)]}
 
-    async def event_gen():
-        async for msg, _meta in agent.astream(inputs, config, stream_mode="messages"):
+    def event_gen():
+        for msg, _meta in agent.stream(inputs, config, stream_mode="messages"):
             content = getattr(msg, "content", None)
             msg_type = getattr(msg, "type", "")
             if not content:
