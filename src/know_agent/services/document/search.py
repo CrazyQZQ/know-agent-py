@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from know_agent.core.cache import get_result_cache, make_cache_key
 from know_agent.services.document.vectorstore import collection_for, get_vectorstore
 
 RRF_K = 60  # RRF 常数，与源项目 HybridEsDocumentRetriever 一致
@@ -124,6 +125,10 @@ class SearchService:
         knowledge_base_type 指定时按类型隔离 collection 检索。
         filter 透传给 PGVector 做 metadata 预过滤。
         """
+        cache_key = make_cache_key("vector", query, top_k, roles, knowledge_base_type, filter)
+        cached = get_result_cache().get(cache_key)
+        if cached is not None:
+            return cached
         vs = get_vectorstore(collection_for(knowledge_base_type)) if knowledge_base_type else self.vectorstore
         if not vs:
             return []
@@ -146,6 +151,7 @@ class SearchService:
             )
             if len(out) >= top_k:
                 break
+        get_result_cache().set(cache_key, out)
         return out
 
     def hybrid_search(self, query: str, top_k: int = 10, roles: list[str] | None = None,
@@ -153,6 +159,10 @@ class SearchService:
         """RRF 融合：keyword + vector. score = Σ 1/(K + rank). 按 roles 过滤权限.
         knowledge_base_type 透传给向量检索（按类型隔离 collection）；filter 透传给两侧.
         """
+        cache_key = make_cache_key("hybrid", query, top_k, roles, knowledge_base_type, filter)
+        cached = get_result_cache().get(cache_key)
+        if cached is not None:
+            return cached
         kw = self.keyword_search(query, top_k=top_k, roles=roles, filter=filter)
         vec = self.vector_search(query, top_k=top_k, roles=roles,
                                  knowledge_base_type=knowledge_base_type, filter=filter)
@@ -175,7 +185,10 @@ class SearchService:
         out: list[SearchResult] = []
         for seg_id, score in ranked:
             r = results[seg_id]
-            r.score = score
-            r.source = "hybrid"
-            out.append(r)
+            # 创建新 SearchResult（不修改原 vec/kw 元素，避免污染缓存）
+            out.append(SearchResult(
+                segment_id=r.segment_id, text=r.text, score=score,
+                source="hybrid", metadata=r.metadata,
+            ))
+        get_result_cache().set(cache_key, out)
         return out

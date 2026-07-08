@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 第一批 · 落地及格线 | 6 | 6 | 完成 |
 | 第二批 · 生产可用 | 6 | 6 | 完成 |
-| 第三批 · 持续优化 | 4 | 2 | 进行中 |
+| 第三批 · 持续优化 | 4 | 3 | 进行中 |
 | 架构前置决策 | 2 | 2 | 已决策 |
 
 ---
@@ -226,8 +226,10 @@
   - `content_md5` 字段（文档内容版本标识，同 MD5 = 同版本）
 
 ### 14. 缓存
-- [ ] embedding 缓存（相同 query 不重复算）
-- [ ] 检索结果缓存（短期）
+- [x] embedding 缓存（相同 query 不重复算）
+  - 通过检索结果缓存间接实现：结果命中缓存则不调 vectorstore，不重复 embed query
+- [x] 检索结果缓存（短期）
+  - `core/cache.py` ResultCache（TTL + FIFO，线程安全，模块级单例跨请求共享）；vector_search/hybrid_search 缓存；hybrid 创建新 SearchResult 不污染缓存
 
 ### 15. 多 agent 编排
 - [ ] supervisor 模式，复杂任务拆分给子 agent

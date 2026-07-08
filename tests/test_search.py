@@ -181,3 +181,22 @@ def test_hybrid_search_passes_filter(monkeypatch):
     monkeypatch.setattr(svc, "vector_search", fake_vec)
     svc.hybrid_search("q", top_k=5, filter={"document_id": 7})
     assert captured["filter"] == {"document_id": 7}
+
+
+# ---- 缓存 ----
+
+def test_vector_search_caches_result(monkeypatch):
+    """相同 query+参数第二次命中缓存，不调 vectorstore."""
+    from know_agent.core.cache import get_result_cache
+    get_result_cache().clear()
+
+    mock_vs = MagicMock()
+    mock_vs.similarity_search_with_score.return_value = [_doc("a", {"segment_id": 1})]
+    monkeypatch.setattr("know_agent.services.document.search.get_vectorstore", lambda: mock_vs)
+
+    svc = SearchService(db=MagicMock())
+    r1 = svc.vector_search("q", top_k=5)
+    r2 = svc.vector_search("q", top_k=5)  # 命中缓存
+    assert r1 == r2
+    # 第二次命中缓存，vectorstore 只调一次
+    assert mock_vs.similarity_search_with_score.call_count == 1

@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     hitl_tools: str = ""
     # pgvector HNSW 检索候选池大小（越大召回越高、越慢；HNSW 索引由 alembic 0004 建）
     hnsw_ef_search: int = 40
+    # 检索结果缓存（TTL 秒 + 最大条数；短期缓存减少重复 embedding/检索）
+    cache_ttl: int = 300
+    cache_maxsize: int = 1000
     # mem0 长期记忆（云端 OpenMemory，https://mem0.ai 注册获取；空=记忆系统旁路）
     mem0_api_key: str | None = None
 
