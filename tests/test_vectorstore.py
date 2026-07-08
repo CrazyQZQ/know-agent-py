@@ -211,3 +211,23 @@ def test_hnsw_ef_search_config_default():
     """hnsw_ef_search 配置项默认 40."""
     from know_agent.configuration import Settings
     assert Settings().hnsw_ef_search == 40
+
+
+# ---- 熔断降级 ----
+
+def test_get_vectorstore_failure_returns_none(monkeypatch):
+    """PGVector 构造失败时返回 None（熔断降级，不抛异常），向量检索自动旁路."""
+    def fake_pg(**kwargs):
+        raise RuntimeError("DB 不可用")
+
+    monkeypatch.setattr("know_agent.services.document.vectorstore.PGVector", fake_pg)
+    monkeypatch.setattr("know_agent.services.document.vectorstore.get_embeddings", lambda: MagicMock())
+    s = MagicMock()
+    s.database_url_safe = "postgresql://x"
+    s.hnsw_ef_search = 40
+    monkeypatch.setattr("know_agent.services.document.vectorstore.get_settings", lambda: s)
+    get_vectorstore.cache_clear()
+
+    # 失败降级为 None，不向调用方抛
+    assert get_vectorstore() is None
+    get_vectorstore.cache_clear()
