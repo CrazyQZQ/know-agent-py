@@ -1,0 +1,3 @@
+{"user_input": "什么是 RAG？", "reference": "RAG 是检索增强生成，结合检索与生成模型。", "reference_contexts": ["RAG（Retrieval-Augmented Generation）是检索增强生成技术，结合检索与生成。"]}
+{"user_input": "pgvector 的作用是什么？", "reference": "pgvector 是 PostgreSQL 向量扩展，用于向量相似度搜索。", "reference_contexts": ["pgvector 是 PostgreSQL 的向量相似度搜索扩展。"]}
+{"user_input": "项目支持哪些认证方式？", "reference": "项目支持 API Key 和 Casdoor JWT 认证。", "reference_contexts": ["认证支持 API Key 头校验和 Casdoor JWT 两种方式。"]}

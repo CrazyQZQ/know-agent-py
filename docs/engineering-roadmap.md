@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 第一批 · 落地及格线 | 6 | 6 | 完成 |
 | 第二批 · 生产可用 | 6 | 6 | 完成 |
-| 第三批 · 持续优化 | 4 | 0 | 待开始 |
+| 第三批 · 持续优化 | 4 | 1 | 进行中 |
 | 架构前置决策 | 2 | 2 | 已决策 |
 
 ---
@@ -212,8 +212,11 @@
 > 量化和扩展。
 
 ### 12. RAG 评估体系
-- [ ] 接入 RAGAS：检索 recall/precision、答案 faithfulness/relevance
-- [ ] 构建评估数据集，CI 跑评估，量化 RAG 调参效果
+- [x] 接入 RAGAS：检索 recall/precision、答案 faithfulness/relevance
+  - 注：ragas 0.4.x 与 langchain_community 0.4 不兼容（ragas import 已移除的 `langchain_community.chat_models.vertexai`），改用 LLM 评判自建脚本，指标定义与 ragas 一致
+- [x] 构建评估数据集，CI 跑评估，量化 RAG 调参效果
+  - `scripts/eval_rag.py`（LLM 评判 4 指标）+ `data/rag_eval.jsonl`（示例数据集）+ `docs/rag-eval.md`
+  - CI 跑评估留待有真实数据集后接入
 
 ### 13. 文档增量更新
 - [ ] 重新上传走增量（仅重算变更分块），非全量重向量化
