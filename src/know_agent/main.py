@@ -61,14 +61,14 @@ def create_app() -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok", "app": settings.app_name}
 
-    # 业务路由（受认证保护，/health 放行）
+    # 业务路由（受认证保护，/health 放行）- 统一 /v1 前缀，为破坏性变更留退路
     _auth = [Depends(verify_auth)]
     # 认证路由（login/logout 公开，me 在端点级受保护）
-    app.include_router(auth_router.router, prefix="/api/auth", tags=["auth"])
-    app.include_router(document_router.router, prefix="/api/document", tags=["document"], dependencies=_auth)
-    app.include_router(document_router.segment_router, prefix="/api/segment", tags=["segment"], dependencies=_auth)
-    app.include_router(agent_router.router, tags=["agent"], dependencies=_auth)
-    app.include_router(graph_router.router, tags=["graph"], dependencies=_auth)
+    app.include_router(auth_router.router, prefix="/v1/api/auth", tags=["auth"])
+    app.include_router(document_router.router, prefix="/v1/api/document", tags=["document"], dependencies=_auth)
+    app.include_router(document_router.segment_router, prefix="/v1/api/segment", tags=["segment"], dependencies=_auth)
+    app.include_router(agent_router.router, prefix="/v1", tags=["agent"], dependencies=_auth)
+    app.include_router(graph_router.router, prefix="/v1", tags=["graph"], dependencies=_auth)
     return app
 
 

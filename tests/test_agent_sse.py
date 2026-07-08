@@ -32,7 +32,7 @@ def test_run_sse_uses_sync_stream_for_sync_checkpointer(monkeypatch):
 
     with client.stream(
         "POST",
-        "/run_sse",
+        "/v1/run_sse",
         json={
             "appName": "common_agent",
             "userId": "alice",
@@ -93,7 +93,7 @@ def test_run_sse_emits_interrupt_event(monkeypatch):
     monkeypatch.setattr(agent_router, "get_react_agent", lambda: fake)
 
     client = TestClient(create_app())
-    with client.stream("POST", "/run_sse", json={
+    with client.stream("POST", "/v1/run_sse", json={
         "appName": "common_agent", "userId": "u", "threadId": "t",
         "newMessage": {"content": "hi", "role": "user"}, "streaming": True,
     }) as resp:
@@ -112,7 +112,7 @@ def test_resume_sse_approve_decision(monkeypatch):
     monkeypatch.setattr(agent_router, "get_react_agent", lambda: fake)
 
     client = TestClient(create_app())
-    resp = client.post("/resume_sse", json={
+    resp = client.post("/v1/resume_sse", json={
         "appName": "common_agent", "userId": "u", "threadId": "t",
         "toolFeedbacks": [{"id": "1", "name": "weather", "result": "APPROVED"}],
     })
@@ -129,7 +129,7 @@ def test_resume_sse_reject_decision(monkeypatch):
     monkeypatch.setattr(agent_router, "get_react_agent", lambda: fake)
 
     client = TestClient(create_app())
-    resp = client.post("/resume_sse", json={
+    resp = client.post("/v1/resume_sse", json={
         "appName": "common_agent", "userId": "u", "threadId": "t",
         "toolFeedbacks": [{"id": "1", "name": "weather", "result": "REJECTED", "description": "不允许"}],
     })
@@ -145,7 +145,7 @@ def test_resume_sse_edit_decision(monkeypatch):
     monkeypatch.setattr(agent_router, "get_react_agent", lambda: fake)
 
     client = TestClient(create_app())
-    resp = client.post("/resume_sse", json={
+    resp = client.post("/v1/resume_sse", json={
         "appName": "common_agent", "userId": "u", "threadId": "t",
         "toolFeedbacks": [{
             "id": "1", "name": "weather", "result": "EDITED",

@@ -53,10 +53,10 @@ def test_run_sse_returns_429_after_exceeding_limit(monkeypatch):
 
     client = TestClient(create_app())
     payload = _payload()
-    assert client.post("/run_sse", json=payload).status_code == 200
-    assert client.post("/run_sse", json=payload).status_code == 200
+    assert client.post("/v1/run_sse", json=payload).status_code == 200
+    assert client.post("/v1/run_sse", json=payload).status_code == 200
     # 第 3 次超频 → 429
-    assert client.post("/run_sse", json=payload).status_code == 429
+    assert client.post("/v1/run_sse", json=payload).status_code == 429
 
 
 def test_chat_ask_returns_429_after_exceeding_limit(monkeypatch):
@@ -68,7 +68,7 @@ def test_chat_ask_returns_429_after_exceeding_limit(monkeypatch):
 
     client = TestClient(create_app())
     params = {"question": "hi"}
-    assert client.get("/chat/ask", params=params).status_code == 200
-    assert client.get("/chat/ask", params=params).status_code == 200
+    assert client.get("/v1/chat/ask", params=params).status_code == 200
+    assert client.get("/v1/chat/ask", params=params).status_code == 200
     # 第 3 次超频 → 429
-    assert client.get("/chat/ask", params=params).status_code == 429
+    assert client.get("/v1/chat/ask", params=params).status_code == 429

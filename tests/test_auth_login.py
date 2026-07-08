@@ -13,7 +13,7 @@ def test_login_reports_missing_casdoor_oauth_client(monkeypatch):
 
     client = TestClient(create_app())
     response = client.post(
-        "/api/auth/login",
+        "/v1/api/auth/login",
         json={"username": "lxqq", "password": "secret"},
     )
 

@@ -80,7 +80,7 @@ def test_run_sse_reconnect_replays_cached_events(monkeypatch):
         "newMessage": {"content": "hi", "role": "user"}, "streaming": True,
     }
     # 首次：执行 agent，产生事件（带 id）
-    with client.stream("POST", "/run_sse", json=payload) as r1:
+    with client.stream("POST", "/v1/run_sse", json=payload) as r1:
         body1 = "".join(r1.iter_text())
     assert r1.status_code == 200
     assert "event: message" in body1
@@ -88,7 +88,7 @@ def test_run_sse_reconnect_replays_cached_events(monkeypatch):
     assert fake.stream_calls == 1
 
     # 重连：带 Last-Event-ID: 1，重放 id>1 的事件，不重新执行 agent
-    with client.stream("POST", "/run_sse", json=payload, headers={"Last-Event-ID": "1"}) as r2:
+    with client.stream("POST", "/v1/run_sse", json=payload, headers={"Last-Event-ID": "1"}) as r2:
         body2 = "".join(r2.iter_text())
     assert r2.status_code == 200
     assert "id: 2" in body2  # 重放了第二条
