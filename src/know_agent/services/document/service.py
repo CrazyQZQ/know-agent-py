@@ -9,6 +9,7 @@ split 后分块入 PG（业务）；embed 时入 pgvector（向量）。
 混合检索 = pg_trgm 关键词 + pgvector 向量 + RRF 融合。
 """
 
+import hashlib
 from dataclasses import dataclass
 
 from langchain_core.documents import Document
@@ -103,62 +104,108 @@ class DocumentProcessService:
             self.repo.update_document(document)
             raise
 
-    # ---------- split ----------
+    # ---------- split（增量：MD5 对比，复用未变更分块的 embedding）----------
     def split(self, doc_id: int, params: SplitParams) -> int:
         document = self.repo.get_document(doc_id)
         if document is None:
             raise ValueError(f"document {doc_id} not found")
         if not document.converted_doc_url:
             raise ValueError("document has not been converted")
+        if document.status not in (DocumentStatus.CONVERTED, DocumentStatus.CHUNKED, DocumentStatus.VECTOR_STORED):
+            raise ValueError(f"document status must be CONVERTED/CHUNKED/VECTOR_STORED, got {document.status}")
 
-        if document.status in (DocumentStatus.CHUNKED, DocumentStatus.VECTOR_STORED):
-            self._delete_segments_and_embeddings(document)
-            document.status = DocumentStatus.CONVERTED
-            self.repo.update_document(document)
-        if document.status != DocumentStatus.CONVERTED:
-            raise ValueError(f"document status must be CONVERTED, got {document.status}")
-
-        chunks = self._read_and_split(document, params)
-        segments = self._build_segments(document, chunks)
-        self.repo.save_segments(segments)
+        chunks, content_md5 = self._read_and_split(document, params)
+        old_segments = self.repo.get_segments_by_document(doc_id)
+        total = self._incremental_split(document, chunks, old_segments)
         document.status = DocumentStatus.CHUNKED
+        document.content_md5 = content_md5  # 更新文档内容版本
         self.repo.update_document(document)
-        logger.info("document {} split into {} segments", doc_id, len(segments))
-        return len(segments)
+        logger.info("document {} split: {} segments", doc_id, total)
+        return total
 
-    def _read_and_split(self, document: KnowledgeDocument, params: SplitParams) -> list[DocumentChunk]:
+    def _read_and_split(
+        self, document: KnowledgeDocument, params: SplitParams
+    ) -> tuple[list[DocumentChunk], str]:
         object_name = _extract_object_name(document.converted_doc_url)
         content = get_oss().download(object_name).read()
         file_type = get_file_type(document.converted_doc_url)
         if file_type in (FileType.EXCEL, FileType.CSV):
-            return split_excel(content, chunk_size=params.chunk_size or 500)
-        text = content.decode("utf-8", errors="ignore")
-        return split(text, params)
+            chunks = split_excel(content, chunk_size=params.chunk_size or 500)
+        else:
+            text = content.decode("utf-8", errors="ignore")
+            chunks = split(text, params)
+        return chunks, _md5(content)
 
-    def _build_segments(
-        self, document: KnowledgeDocument, chunks: list[DocumentChunk]
-    ) -> list[KnowledgeSegment]:
-        segments: list[KnowledgeSegment] = []
+    def _incremental_split(
+        self, document: KnowledgeDocument, chunks: list[DocumentChunk],
+        old_segments: list[KnowledgeSegment],
+    ) -> int:
+        """增量分块：对比 chunk_md5，复用旧 segment（含 embedding），新建/删除变更的."""
+        old_md_to_seg = {seg.chunk_md5: seg for seg in old_segments if seg.chunk_md5}
+        new_mds: set[str] = set()
+        to_save: list[KnowledgeSegment] = []
+        to_update: list[KnowledgeSegment] = []
+        reused = 0
+
         for i, chunk in enumerate(chunks):
-            metadata = dict(chunk.metadata)
-            chunk_id = metadata.get(MetadataKey.CHUNK_ID) or f"{document.doc_id}-{i}"
-            metadata.setdefault(MetadataKey.CHUNK_ID, chunk_id)
-            metadata[MetadataKey.DOC_ID] = document.doc_id
-            metadata[MetadataKey.FILE_NAME] = document.doc_title
-            metadata[MetadataKey.URL] = document.doc_url
-            if document.accessible_by:
-                metadata[MetadataKey.ACCESSIBLE_BY] = document.accessible_by
-            skip = metadata.get(MetadataKey.SKIP_EMBEDDING)
-            segments.append(KnowledgeSegment(
-                text=chunk.text,
-                chunk_id=chunk_id,
-                metadata_=metadata,
-                document_id=document.doc_id,
-                chunk_order=i,
-                skip_embedding=1 if skip == 1 else 0,
-                status=SegmentStatus.STORED,
-            ))
-        return segments
+            md = _md5(chunk.text.encode("utf-8"))
+            new_mds.add(md)
+            if md in old_md_to_seg:
+                seg = old_md_to_seg[md]
+                seg.chunk_order = i
+                self._sync_segment_metadata(seg, document)
+                to_update.append(seg)
+                reused += 1
+            else:
+                to_save.append(self._build_segment(document, chunk, i, md))
+
+        # 删除不再存在的旧 segment 及其 embedding
+        to_delete = [seg for md, seg in old_md_to_seg.items() if md not in new_mds]
+        self._delete_segments_and_embeddings_for(to_delete)
+
+        if to_save:
+            self.repo.save_segments(to_save)
+        for seg in to_update:
+            self.repo.update_segment(seg)
+        logger.info("[incremental] reused={}, new={}, deleted={}", reused, len(to_save), len(to_delete))
+        return reused + len(to_save)
+
+    def _build_segment(
+        self, document: KnowledgeDocument, chunk: DocumentChunk, order: int, md5_hash: str,
+    ) -> KnowledgeSegment:
+        """构建单个新 segment（含 chunk_md5，status=STORED 待向量化）."""
+        metadata = dict(chunk.metadata)
+        chunk_id = metadata.get(MetadataKey.CHUNK_ID) or f"{document.doc_id}-{order}"
+        metadata.setdefault(MetadataKey.CHUNK_ID, chunk_id)
+        metadata[MetadataKey.DOC_ID] = document.doc_id
+        metadata[MetadataKey.FILE_NAME] = document.doc_title
+        metadata[MetadataKey.URL] = document.doc_url
+        if document.accessible_by:
+            metadata[MetadataKey.ACCESSIBLE_BY] = document.accessible_by
+        skip = metadata.get(MetadataKey.SKIP_EMBEDDING)
+        return KnowledgeSegment(
+            text=chunk.text,
+            chunk_id=chunk_id,
+            chunk_md5=md5_hash,
+            metadata_=metadata,
+            document_id=document.doc_id,
+            chunk_order=order,
+            skip_embedding=1 if skip == 1 else 0,
+            status=SegmentStatus.STORED,
+        )
+
+    def _sync_segment_metadata(self, seg: KnowledgeSegment, document: KnowledgeDocument) -> None:
+        """复用旧 segment 时同步 metadata（accessible_by 等与文档权限变化同步）."""
+        metadata = dict(seg.metadata_ or {})
+        metadata[MetadataKey.CHUNK_ID] = seg.chunk_id
+        metadata[MetadataKey.DOC_ID] = document.doc_id
+        metadata[MetadataKey.FILE_NAME] = document.doc_title
+        metadata[MetadataKey.URL] = document.doc_url
+        if document.accessible_by:
+            metadata[MetadataKey.ACCESSIBLE_BY] = document.accessible_by
+        else:
+            metadata.pop(MetadataKey.ACCESSIBLE_BY, None)
+        seg.metadata_ = metadata
 
     # ---------- embed ----------
     def embed_and_store(self, doc_id: int) -> bool:
@@ -293,6 +340,24 @@ class DocumentProcessService:
             if vs:
                 vs.delete(embedding_ids)
         self.repo.delete_segments_by_document(document.doc_id)
+
+    def _delete_segments_and_embeddings_for(self, segments: list[KnowledgeSegment]) -> None:
+        """删除指定 segments 及其 embedding（增量删除用）."""
+        if not segments:
+            return
+        embedding_ids = [s.embedding_id for s in segments if s.embedding_id]
+        if embedding_ids:
+            vs = get_vectorstore()
+            if vs:
+                vs.delete(embedding_ids)
+        for seg in segments:
+            self.db.delete(seg)
+        self.db.commit()
+
+
+def _md5(data: bytes) -> str:
+    """计算 MD5（分块/文档内容指纹，增量更新用）."""
+    return hashlib.md5(data).hexdigest()
 
 
 def _strip_ext(file_name: str) -> str:

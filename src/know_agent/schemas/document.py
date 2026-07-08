@@ -22,6 +22,7 @@ class DocumentOut(BaseModel):
     knowledge_base_type: str | None = None
     extension: dict | None = None
     error_message: str | None = None
+    content_md5: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

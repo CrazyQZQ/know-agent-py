@@ -145,3 +145,50 @@ def test_run_pipeline_marks_failed_on_unsupported_type(monkeypatch):
 
     assert doc.status == DocumentStatus.FAILED
     assert "不支持" in doc.error_message
+
+
+def test_split_reuses_unchanged_segments(monkeypatch):
+    """增量 split:相同 MD5 复用旧 segment(含 embedding),不同 MD5 新建,旧的不在新的删除."""
+    from know_agent.models.document import KnowledgeSegment
+    from know_agent.models.enums import SegmentStatus
+    from know_agent.services.document.service import DocumentProcessService, _md5
+    from know_agent.services.document.splitter import DocumentChunk, SplitParams
+
+    text_a, text_b, text_c = "内容A", "内容B", "内容C"
+    md_a, md_b = _md5(text_a.encode()), _md5(text_b.encode())
+    doc = KnowledgeDocument(doc_id=1, doc_title="t", status=DocumentStatus.CHUNKED,
+                            converted_doc_url="http://oss/f.md", content_md5="old")
+    seg_a = KnowledgeSegment(id=1, text=text_a, chunk_md5=md_a, document_id=1, chunk_order=0,
+                             status=SegmentStatus.VECTOR_STORED, embedding_id="emb_a", metadata_={})
+    seg_b = KnowledgeSegment(id=2, text=text_b, chunk_md5=md_b, document_id=1, chunk_order=1,
+                             status=SegmentStatus.VECTOR_STORED, embedding_id="emb_b", metadata_={})
+
+    mock_vs = MagicMock()
+    monkeypatch.setattr("know_agent.services.document.service.get_vectorstore",
+                        lambda collection_name="know_agent": mock_vs)
+
+    svc = DocumentProcessService(MagicMock())
+    svc.repo = MagicMock()
+    svc.repo.get_document.return_value = doc
+    svc.repo.get_segments_by_document.return_value = [seg_a, seg_b]
+    # mock _read_and_split: 返回 [chunk_a, chunk_c]（B 变成 C）
+    monkeypatch.setattr(svc, "_read_and_split",
+                        lambda d, p: ([DocumentChunk(text_a), DocumentChunk(text_c)], "new_md"))
+
+    total = svc.split(1, SplitParams())
+
+    assert total == 2  # 复用 seg_a + 新建 chunk_c
+    # seg_a 复用（保留 embedding，不重新向量化）
+    assert seg_a.status == SegmentStatus.VECTOR_STORED
+    assert seg_a.embedding_id == "emb_a"
+    # seg_b 的 embedding 被删除（MD5 不在新分块）
+    mock_vs.delete.assert_called_once_with(["emb_b"])
+    # 新建 chunk_c（pending 向量化）
+    svc.repo.save_segments.assert_called_once()
+    new_segs = svc.repo.save_segments.call_args[0][0]
+    assert len(new_segs) == 1
+    assert new_segs[0].text == text_c
+    assert new_segs[0].status == SegmentStatus.STORED
+    # document content_md5 更新（版本标识）
+    assert doc.content_md5 == "new_md"
+    assert doc.status == DocumentStatus.CHUNKED

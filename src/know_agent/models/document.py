@@ -36,6 +36,8 @@ class KnowledgeDocument(Base, TimestampMixin, SoftDeleteMixin):
     extension: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # 异步处理失败时的错误信息（status=FAILED 时填充），便于前端轮询展示
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 文档内容 MD5（版本标识，重新 split 时更新；同 MD5 = 同内容版本）
+    content_md5: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     def __repr__(self) -> str:
         return f"<KnowledgeDocument doc_id={self.doc_id} title={self.doc_title!r} status={self.status}>"
@@ -63,6 +65,8 @@ class KnowledgeSegment(Base, TimestampMixin, SoftDeleteMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # 分块内容 MD5（增量更新对比用，相同则复用旧 embedding）
+    chunk_md5: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # "metadata" 是 SQLAlchemy 保留属性，Python 侧用 metadata_ 别名映射到列 metadata
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     document_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
