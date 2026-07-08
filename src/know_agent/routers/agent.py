@@ -12,6 +12,7 @@ from know_agent.agents import thread as thread_service
 from know_agent.agents.react_agent import AGENT_NAME, TOOL_CALL_LIMIT, get_react_agent
 from know_agent.configuration import get_settings
 from know_agent.core.limiter import limiter
+from know_agent.core.sse_store import parse_last_event_id, sse_store
 from know_agent.schemas.agent import AgentRunRequest, AgentResumeRequest
 
 router = APIRouter()
@@ -33,35 +34,57 @@ def _extract_hitl_request(state) -> dict | None:
     return None
 
 
-def _stream_agent(agent, inputs, config):
-    """通用 agent 流式：yield message/tool，结束后按 state 推送 interrupt/done."""
+def _stream_agent(agent, inputs, config, last_event_id: int | None = None):
+    """通用 agent 流式：yield message/tool(带 id)，结束后推送 interrupt/done.
+
+    last_event_id 非 None 时为断线重连：只重放缓存中该 id 之后的事件，不重新执行 agent
+    （原流已随客户端断开停止；如需继续，前端重新 run_sse/resume_sse）。
+    """
+    thread_id = config["configurable"]["thread_id"]
+    # 断线重连：重放缓存事件
+    if last_event_id is not None:
+        for eid, ev in sse_store.get_since(thread_id, last_event_id):
+            yield {**ev, "id": str(eid)}
+        return
+    # 新流：产生事件存缓存 + yield（带 id）
     for msg, _meta in agent.stream(inputs, config, stream_mode="messages"):
         content = getattr(msg, "content", None)
         msg_type = getattr(msg, "type", "")
         if not content:
             continue
         if msg_type in ("AIMessageChunk", "AIMessage"):
-            yield {"event": "message", "data": content}
+            event = {"event": "message", "data": content}
         elif msg_type == "ToolMessage":
-            yield {"event": "tool", "data": content}
+            event = {"event": "tool", "data": content}
+        else:
+            continue
+        eid = sse_store.append(thread_id, event)
+        yield {**event, "id": str(eid)}
     state = agent.get_state(config)
     hitl = _extract_hitl_request(state)
     if hitl:
-        yield {"event": "interrupt", "data": json.dumps(hitl, ensure_ascii=False)}
+        event = {"event": "interrupt", "data": json.dumps(hitl, ensure_ascii=False)}
     else:
-        yield {"event": "done", "data": "[DONE]"}
+        event = {"event": "done", "data": "[DONE]"}
+    eid = sse_store.append(thread_id, event)
+    yield {**event, "id": str(eid)}
+    sse_store.mark_done(thread_id)
 
 
 @router.post("/run_sse", tags=["agent"])
 @limiter.limit(lambda: get_settings().rate_limit)
 async def run_sse(request: Request, req: AgentRunRequest):
-    """流式运行 agent（SSE）。工具需审批时以 interrupt 事件推送 HITLRequest."""
+    """流式运行 agent（SSE）。支持 Last-Event-ID 断线重连。工具需审批时推 interrupt."""
     agent = get_react_agent()
     config = {
         "configurable": {"thread_id": req.threadId},
         "recursion_limit": TOOL_CALL_LIMIT,
         "metadata": {"user_id": req.userId, "app_name": req.appName},
     }
+    last_id = parse_last_event_id(request.headers)
+    if last_id is not None:
+        # 断线重连：只重放缓存事件，不重新执行 agent
+        return EventSourceResponse(_stream_agent(agent, None, config, last_event_id=last_id))
     inputs = {"messages": [HumanMessage(content=req.newMessage.content)]}
     return EventSourceResponse(_stream_agent(agent, inputs, config))
 
@@ -69,13 +92,18 @@ async def run_sse(request: Request, req: AgentRunRequest):
 @router.post("/resume_sse", tags=["agent"])
 @limiter.limit(lambda: get_settings().rate_limit)
 async def resume_sse(request: Request, req: AgentResumeRequest):
-    """恢复 agent（HITL 工具审批）：toolFeedbacks 转 decisions，Command(resume=...) 继续."""
+    """恢复 agent（HITL 工具审批）：toolFeedbacks 转 decisions，Command(resume=...) 继续.
+    支持 Last-Event-ID 断线重连。
+    """
     agent = get_react_agent()
     config = {
         "configurable": {"thread_id": req.threadId},
         "recursion_limit": TOOL_CALL_LIMIT,
         "metadata": {"user_id": req.userId, "app_name": req.appName},
     }
+    last_id = parse_last_event_id(request.headers)
+    if last_id is not None:
+        return EventSourceResponse(_stream_agent(agent, None, config, last_event_id=last_id))
     decisions: list[dict] = []
     for fb in req.toolFeedbacks:
         if fb.result == "REJECTED":
