@@ -5,8 +5,11 @@
 
 from langchain_core.tools import tool
 
+from know_agent.core.resilient import resilient
+
 
 @tool
+@resilient(fallback="天气查询暂时不可用，请告知用户稍后重试。")
 def get_weather(city: str) -> str:
     """查询指定城市的天气."""
     # 占位实现，后续可接入真实天气 API

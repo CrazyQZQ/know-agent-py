@@ -8,8 +8,11 @@ mem0 add 幂等（相似记忆合并），两路径不冲突。
 
 from langchain_core.tools import tool
 
+from know_agent.core.resilient import resilient
+
 
 @tool
+@resilient(fallback="记忆保存失败，请告知用户稍后重试。")
 def save_memory(content: str) -> str:
     """保存长期记忆。当用户明确要求记住某事（如"记住我喜欢咖啡"）时调用。
 

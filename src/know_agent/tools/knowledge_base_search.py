@@ -7,8 +7,16 @@ QueryRouter 由 agentic RAG 承担（create_agent 自主决定是否调用本工
 
 from langchain_core.tools import tool
 
+from know_agent.core.resilient import resilient
+
 
 @tool
+@resilient(
+    fallback="知识库检索暂时不可用，请基于自身已有信息回答用户。",
+    circuit=True,
+    failure_threshold=5,
+    recovery_timeout=60,
+)
 def knowledge_base_search(query: str, top_k: int = 5, knowledge_base_type: str | None = None) -> str:
     """根据用户问题查询知识库，返回带来源标注的相关文档片段。用于回答知识库相关问题.
 

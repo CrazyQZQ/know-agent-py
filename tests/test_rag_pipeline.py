@@ -177,3 +177,27 @@ def test_inject_uses_fallback_when_no_filename():
 
 def test_inject_empty():
     assert inject([]) == "未检索到相关信息。"
+
+
+# ---- 工具层熔断降级 ----
+
+def test_knowledge_base_search_fallback_on_error(monkeypatch):
+    """检索流程任意异常时工具降级返回友好文本，不抛给 agent；DB 连接仍正确关闭."""
+    from know_agent.tools.knowledge_base_search import knowledge_base_search
+
+    class _Db:
+        def __init__(self):
+            self.closed = False
+        def close(self):
+            self.closed = True
+
+    db = _Db()
+    monkeypatch.setattr("know_agent.db.postgres.SessionLocal", lambda: db)
+
+    def _boom(_db):
+        raise RuntimeError("向量库初始化失败")
+    monkeypatch.setattr("know_agent.services.document.search.SearchService", _boom)
+
+    result = knowledge_base_search.invoke({"query": "测试"})
+    assert "不可用" in result
+    assert db.closed  # finally 仍释放连接

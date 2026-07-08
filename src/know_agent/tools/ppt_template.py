@@ -5,8 +5,11 @@
 
 from langchain_core.tools import tool
 
+from know_agent.core.resilient import resilient
+
 
 @tool
+@resilient(fallback="PPT 模板列表获取失败，请告知用户暂时无法获取模板列表。")
 def list_ppt_templates() -> str:
     """列出可用的 PPT 模板."""
     return "可用模板: ai（AI科技风PPT，5页，适用于AI/科技场景）"
