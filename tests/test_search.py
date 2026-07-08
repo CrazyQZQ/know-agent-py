@@ -72,11 +72,11 @@ def test_vector_search_returns_empty_when_no_vectorstore(monkeypatch):
 def test_hybrid_search_rrf_fusion(monkeypatch):
     monkeypatch.setattr("know_agent.services.document.search.get_vectorstore", lambda: None)
     svc = SearchService(db=MagicMock())
-    monkeypatch.setattr(svc, "keyword_search", lambda q, top_k=10, roles=None: [
+    monkeypatch.setattr(svc, "keyword_search", lambda q, top_k=10, roles=None, filter=None: [
         SearchResult(segment_id=1, text="a", score=0.9, source="keyword", metadata={}),
         SearchResult(segment_id=2, text="b", score=0.8, source="keyword", metadata={}),
     ])
-    monkeypatch.setattr(svc, "vector_search", lambda q, top_k=10, roles=None, knowledge_base_type=None: [
+    monkeypatch.setattr(svc, "vector_search", lambda q, top_k=10, roles=None, knowledge_base_type=None, filter=None: [
         SearchResult(segment_id=1, text="a", score=0.1, source="vector", metadata={}),
         SearchResult(segment_id=3, text="c", score=0.2, source="vector", metadata={}),
     ])
@@ -115,3 +115,69 @@ def test_keyword_search_maps_rows(monkeypatch):
     # roles 应作为 SQL 参数传入
     executed_params = mock_db.execute.call_args[0][1]
     assert executed_params["roles"] == ["editor"]
+
+
+# ---- _build_filter_clause ----
+
+def test_build_filter_clause_document_id():
+    from know_agent.services.document.search import _build_filter_clause
+    clause, params = _build_filter_clause({"document_id": 5})
+    assert "document_id = :f_document_id" in clause
+    assert params == {"f_document_id": "5"}
+
+
+def test_build_filter_clause_metadata_key():
+    from know_agent.services.document.search import _build_filter_clause
+    clause, params = _build_filter_clause({"fileName": "x.pdf"})
+    assert "metadata->>'fileName' = :f_fileName" in clause
+    assert params == {"f_fileName": "x.pdf"}
+
+
+def test_build_filter_clause_rejects_invalid_key():
+    """非法 key（含特殊字符）被跳过，防 SQL 注入."""
+    from know_agent.services.document.search import _build_filter_clause
+    clause, params = _build_filter_clause({"key'; DROP--": "x"})
+    assert clause == ""
+    assert params == {}
+
+
+def test_build_filter_clause_empty():
+    from know_agent.services.document.search import _build_filter_clause
+    assert _build_filter_clause(None) == ("", {})
+    assert _build_filter_clause({}) == ("", {})
+
+
+# ---- 检索带 filter ----
+
+def test_keyword_search_applies_filter(monkeypatch):
+    mock_db = MagicMock()
+    mock_db.execute.return_value.mappings.return_value.all.return_value = []
+    monkeypatch.setattr("know_agent.services.document.search.get_vectorstore", lambda: None)
+    svc = SearchService(db=mock_db)
+    svc.keyword_search("q", top_k=5, filter={"document_id": 3})
+    params = mock_db.execute.call_args[0][1]
+    assert params["f_document_id"] == "3"
+
+
+def test_vector_search_passes_filter_to_vectorstore(monkeypatch):
+    mock_vs = MagicMock()
+    mock_vs.similarity_search_with_score.return_value = []
+    monkeypatch.setattr("know_agent.services.document.search.get_vectorstore", lambda: mock_vs)
+    svc = SearchService(db=MagicMock())
+    svc.vector_search("q", top_k=5, filter={"document_id": 3})
+    assert mock_vs.similarity_search_with_score.call_args.kwargs["filter"] == {"document_id": 3}
+
+
+def test_hybrid_search_passes_filter(monkeypatch):
+    monkeypatch.setattr("know_agent.services.document.search.get_vectorstore", lambda: None)
+    svc = SearchService(db=MagicMock())
+    monkeypatch.setattr(svc, "keyword_search", lambda q, top_k=10, roles=None, filter=None: [])
+    captured = {}
+
+    def fake_vec(q, top_k=10, roles=None, knowledge_base_type=None, filter=None):
+        captured["filter"] = filter
+        return []
+
+    monkeypatch.setattr(svc, "vector_search", fake_vec)
+    svc.hybrid_search("q", top_k=5, filter={"document_id": 7})
+    assert captured["filter"] == {"document_id": 7}

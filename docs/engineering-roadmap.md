@@ -15,7 +15,7 @@
 | 批次 | 项数 | 完成 | 状态 |
 |---|---|---|---|
 | 第一批 · 落地及格线 | 5 | 5 | 完成 |
-| 第二批 · 生产可用 | 6 | 3 | 进行中 |
+| 第二批 · 生产可用 | 6 | 4 | 进行中 |
 | 第三批 · 持续优化 | 4 | 0 | 待开始 |
 | 架构前置决策 | 2 | 2 | 已决策 |
 
@@ -150,7 +150,7 @@
   - 改动点：`vectorstore.py` 支持动态 collection；检索带 collection 过滤
   - 验收：不同知识库向量互不干扰
 
-- [ ] **7.2 检索 metadata 过滤**
+- [x] **7.2 检索 metadata 过滤**
   - 现状：检索无过滤条件
   - 目标：支持按 `document_id` / `file_name` / 时间范围 / 自定义 metadata 过滤
   - 改动点：`SearchService` + `RagPipeline` 增 `filter` 参数；向量检索用 PGVector `filter`；关键词 SQL 加 where

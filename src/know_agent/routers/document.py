@@ -100,17 +100,28 @@ def search(
     top_k: int = Query(10, ge=1, le=50),
     mode: str = Query("hybrid", pattern="^(keyword|vector|hybrid)$"),
     knowledge_base_type: str | None = Query(None, description="知识库类型，按类型隔离向量检索"),
+    document_id: int | None = Query(None, description="按文档 ID 过滤"),
+    file_name: str | None = Query(None, description="按文件名过滤"),
     db: Session = Depends(get_db),
 ) -> list:
     """混合检索：keyword(pg_trgm) / vector(pgvector) / hybrid(RRF 融合). 按 accessible_by 角色过滤."""
     svc = SearchService(db)
     roles = get_current_roles()
+    # 构建 metadata 过滤条件（document_id 用列，其他用 metadata->>'key'）
+    search_filter: dict = {}
+    if document_id is not None:
+        search_filter["document_id"] = document_id
+    if file_name:
+        search_filter["fileName"] = file_name
+    search_filter = search_filter or None
     if mode == "keyword":
-        results = svc.keyword_search(q, top_k=top_k, roles=roles)
+        results = svc.keyword_search(q, top_k=top_k, roles=roles, filter=search_filter)
     elif mode == "vector":
-        results = svc.vector_search(q, top_k=top_k, roles=roles, knowledge_base_type=knowledge_base_type)
+        results = svc.vector_search(q, top_k=top_k, roles=roles,
+                                    knowledge_base_type=knowledge_base_type, filter=search_filter)
     else:
-        results = svc.hybrid_search(q, top_k=top_k, roles=roles, knowledge_base_type=knowledge_base_type)
+        results = svc.hybrid_search(q, top_k=top_k, roles=roles,
+                                    knowledge_base_type=knowledge_base_type, filter=search_filter)
     return [
         SearchResultOut(
             segment_id=r.segment_id, text=r.text, score=r.score,
