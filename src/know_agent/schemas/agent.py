@@ -12,7 +12,7 @@ class ToolFeedback(BaseModel):
     id: str
     name: str | None = None
     arguments: dict | None = None
-    result: str = "APPROVED"  # APPROVED / REJECTED
+    result: str = "APPROVED"  # APPROVED / REJECTED / EDITED
     description: str | None = None
 
 

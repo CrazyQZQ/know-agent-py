@@ -135,3 +135,27 @@ def test_resume_sse_reject_decision(monkeypatch):
     })
     assert resp.status_code == 200
     assert fake.stream_inputs[0].resume == {"decisions": [{"type": "reject", "message": "不允许"}]}
+
+
+def test_resume_sse_edit_decision(monkeypatch):
+    """resume_sse 把 EDITED 转为 edit decision（arguments 作为工具入参）."""
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    get_settings.cache_clear()
+    fake = _HitlAgent(hitl=None)
+    monkeypatch.setattr(agent_router, "get_react_agent", lambda: fake)
+
+    client = TestClient(create_app())
+    resp = client.post("/resume_sse", json={
+        "appName": "common_agent", "userId": "u", "threadId": "t",
+        "toolFeedbacks": [{
+            "id": "1", "name": "weather", "result": "EDITED",
+            "arguments": {"city": "shanghai"},
+        }],
+    })
+    assert resp.status_code == 200
+    assert fake.stream_inputs[0].resume == {
+        "decisions": [{
+            "type": "edit",
+            "edited_action": {"name": "weather", "args": {"city": "shanghai"}},
+        }]
+    }

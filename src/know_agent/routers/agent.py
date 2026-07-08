@@ -80,6 +80,12 @@ async def resume_sse(request: Request, req: AgentResumeRequest):
     for fb in req.toolFeedbacks:
         if fb.result == "REJECTED":
             decisions.append({"type": "reject", "message": fb.description or ""})
+        elif fb.result == "EDITED":
+            # 用户编辑工具参数：name + arguments 作为 edited_action，按新参数执行
+            decisions.append({
+                "type": "edit",
+                "edited_action": {"name": fb.name or "", "args": fb.arguments or {}},
+            })
         else:
             decisions.append({"type": "approve"})
     return EventSourceResponse(_stream_agent(agent, Command(resume={"decisions": decisions}), config))
