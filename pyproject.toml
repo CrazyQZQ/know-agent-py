@@ -1,0 +1,49 @@
+[project]
+name = "know-agent"
+version = "0.1.0"
+description = "基于 LangChain/LangGraph + FastAPI 的智能体应用（文档管理 / common-agent / PPT 生成 graph）"
+readme = "README.md"
+authors = [
+    { name = "qinqiang", email = "13186061107@163.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.18.5",
+    "boto3>=1.43.41",
+    "fastapi>=0.139.0",
+    "langchain>=1.3.11",
+    "langchain-community>=0.4.2",
+    "langchain-core>=1.4.8",
+    "langchain-mcp-adapters>=0.3.0",
+    "langchain-openai>=1.3.3",
+    "langchain-postgres>=0.0.17",
+    "langgraph>=1.2.8",
+    "langgraph-checkpoint-postgres>=3.1.0",
+    "loguru>=0.7.3",
+    "mcp>=1.28.1",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.3",
+    "pgvector>=0.3.6",
+    "psycopg[binary]>=3.3.4",
+    "pydantic-settings>=2.14.2",
+    "pymupdf>=1.28.0",
+    "python-docx>=1.2.0",
+    "python-dotenv>=1.2.2",
+    "python-multipart>=0.0.32",
+    "python-pptx>=1.0.2",
+    "requests>=2.34.2",
+    "sqlalchemy>=2.0.51",
+    "sse-starlette>=3.4.5",
+    "uvicorn[standard]>=0.50.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.5,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]

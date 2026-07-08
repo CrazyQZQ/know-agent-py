@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志
+*.log
+logs/
+
+# 测试 / 覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# 数据库
+*.sqlite3
+
+# 产物
+output/
+tmp/
+
+# 生成 PPT（保留模板）
+*.pptx
+!templates/*.pptx
+
+# LangGraph
+.langgraph/
+
+# CodeGraph（本地索引）
+.codegraph/
+
+# Cursor IDE
+.cursor/
+
+# Node / 前端（know-agent-ui）
+node_modules/
+.next/
+out/
+.env.local
+.env.*.local
