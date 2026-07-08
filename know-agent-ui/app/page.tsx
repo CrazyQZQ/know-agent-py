@@ -41,9 +41,11 @@ import {
   readAuth,
   splitDocument,
   streamSse,
+  resumeSse,
   uploadDocument as uploadDocumentApi,
   type AuthState,
-  type RoleItem
+  type RoleItem,
+  type ToolFeedback
 } from "@/lib/api";
 import { documentLifecycle, type ChatMessage, type DocumentItem, type DocumentStatus, type SegmentItem } from "@/lib/mock-data";
 
@@ -85,6 +87,7 @@ export default function Home() {
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [busyDocId, setBusyDocId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<{ action_requests: { name: string; args: Record<string, unknown> }[] } | null>(null);
 
   const token = auth?.token ?? null;
   const user = auth?.user;
@@ -168,6 +171,20 @@ export default function Home() {
             setMessages((current) => [...current, makeMessage("tool", data, ["event: tool"])]);
             return;
           }
+          if (event === "interrupt") {
+            // HITL 工具审批：解析待审批工具，展示审批 UI
+            try {
+              const hitl = JSON.parse(data) as { action_requests: { name: string; args: Record<string, unknown> }[] };
+              setPendingApproval(hitl);
+              setMessages((current) => [
+                ...current,
+                makeMessage("assistant", `⚠️ 工具 ${hitl.action_requests.map((r) => r.name).join(", ")} 需要审批`, ["event: interrupt"])
+              ]);
+            } catch {
+              setMessages((current) => [...current, makeMessage("assistant", "收到审批请求", ["event: interrupt"])]);
+            }
+            return;
+          }
           setMessages((current) =>
             current.map((message) =>
               message.id === assistantId
@@ -181,6 +198,47 @@ export default function Home() {
       setMessages((current) => [
         ...current.filter((message) => message.id !== assistantId || message.content),
         makeMessage("assistant", err instanceof Error ? err.message : "对话请求失败", ["error"])
+      ]);
+    } finally {
+      setStreaming(false);
+    }
+  }
+
+  async function approveTool(result: "APPROVED" | "REJECTED") {
+    if (!pendingApproval || !token) return;
+    const feedbacks: ToolFeedback[] = pendingApproval.action_requests.map((r) => ({
+      id: r.name,
+      name: r.name,
+      result
+    }));
+    setPendingApproval(null);
+    const assistantId = `assistant-${Date.now()}`;
+    setMessages((current) => [...current, { ...makeMessage("assistant", "", ["event: resume"]), id: assistantId }]);
+    setStreaming(true);
+    try {
+      await resumeSse(threadId, feedbacks, token, ({ event, data }) => {
+        if (event === "done") return;
+        if (event === "tool") {
+          setMessages((current) => [...current, makeMessage("tool", data, ["event: tool"])]);
+          return;
+        }
+        if (event === "interrupt") {
+          try {
+            const hitl = JSON.parse(data) as { action_requests: { name: string; args: Record<string, unknown> }[] };
+            setPendingApproval(hitl);
+          } catch { /* ignore */ }
+          return;
+        }
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantId ? { ...message, content: `${message.content}${data}` } : message
+          )
+        );
+      });
+    } catch (err) {
+      setMessages((current) => [
+        ...current,
+        makeMessage("assistant", err instanceof Error ? err.message : "恢复失败", ["error"])
       ]);
     } finally {
       setStreaming(false);
@@ -385,7 +443,7 @@ export default function Home() {
           </header>
 
           {activeTab === "assistant" && (
-            <AssistantView input={input} messages={messages} streaming={streaming} setInput={setInput} sendMessage={sendMessage} />
+            <AssistantView input={input} messages={messages} streaming={streaming} setInput={setInput} sendMessage={sendMessage} pendingApproval={pendingApproval} onApprove={() => approveTool("APPROVED")} onReject={() => approveTool("REJECTED")} />
           )}
           {activeTab === "workflow" && (
             <WorkflowView
@@ -472,11 +530,11 @@ function LoginView({ onLogin, error }: { onLogin: (event: FormEvent<HTMLFormElem
   );
 }
 
-function AssistantView({ input, messages, streaming, setInput, sendMessage }: { input: string; messages: ChatMessage[]; streaming: boolean; setInput: (value: string) => void; sendMessage: (event: FormEvent<HTMLFormElement>) => void }) {
+function AssistantView({ input, messages, streaming, setInput, sendMessage, pendingApproval, onApprove, onReject }: { input: string; messages: ChatMessage[]; streaming: boolean; setInput: (value: string) => void; sendMessage: (event: FormEvent<HTMLFormElement>) => void; pendingApproval: { action_requests: { name: string; args: Record<string, unknown> }[] } | null; onApprove: () => void; onReject: () => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, streaming]);
+  }, [messages, streaming, pendingApproval]);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f7f7f4]">
@@ -484,6 +542,23 @@ function AssistantView({ input, messages, streaming, setInput, sendMessage }: { 
         <div className="mx-auto grid max-w-3xl gap-5 pb-4">
           {messages.map((message) => <ChatMessageRow key={message.id} message={message} />)}
           {streaming ? <div className="flex items-center gap-2 pl-11 text-sm text-[#77776f]"><Loader2 className="h-4 w-4 animate-spin" /> 正在生成</div> : null}
+          {pendingApproval ? (
+            <div className="mx-auto max-w-3xl rounded-2xl border border-[#e6c969] bg-[#fffbeb] p-4">
+              <div className="text-sm font-semibold text-[#7a5c00]">工具审批</div>
+              <div className="mt-2 space-y-1">
+                {pendingApproval.action_requests.map((r, i) => (
+                  <div key={i} className="text-sm text-[#5c4400]">
+                    <span className="font-mono font-semibold">{r.name}</span>
+                    <span className="ml-2 text-[#8a8a82]">{JSON.stringify(r.args)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button onClick={onApprove} disabled={streaming} className="h-9 rounded-lg bg-[#0d0d0d] px-4 text-sm font-semibold text-white disabled:opacity-40">批准执行</button>
+                <button onClick={onReject} disabled={streaming} className="h-9 rounded-lg border border-[#f0c4c4] px-4 text-sm font-semibold text-[#a33a3a] hover:bg-[#fff1f1] disabled:opacity-40">拒绝</button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
       <form onSubmit={sendMessage} className="shrink-0 bg-[#f7f7f4] px-4 pb-5 pt-2">
