@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     hitl_tools: str = ""
     # pgvector HNSW 检索候选池大小（越大召回越高、越慢；HNSW 索引由 alembic 0004 建）
     hnsw_ef_search: int = 40
+    # mem0 长期记忆（云端 OpenMemory，https://mem0.ai 注册获取；空=记忆系统旁路）
+    mem0_api_key: str | None = None
 
     # 可观测性 — LangSmith tracing（langchain 内置，设环境变量即生效，无需改业务代码）
     langsmith_tracing: bool = False

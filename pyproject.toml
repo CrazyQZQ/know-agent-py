@@ -37,6 +37,7 @@ dependencies = [
     "sse-starlette>=3.4.5",
     "tenacity>=8.2.3",
     "uvicorn[standard]>=0.50.2",
+    "mem0ai>=2.0.11",
 ]
 
 [build-system]

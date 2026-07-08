@@ -3,12 +3,13 @@
 import json
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
-from langchain_core.messages import HumanMessage
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import Command
 from sse_starlette.sse import EventSourceResponse
 
 from know_agent.agents import thread as thread_service
+from know_agent.agents.memory import extract_memories, search_memories
 from know_agent.agents.react_agent import AGENT_NAME, TOOL_CALL_LIMIT, get_react_agent
 from know_agent.configuration import get_settings
 from know_agent.core.limiter import limiter
@@ -73,8 +74,8 @@ def _stream_agent(agent, inputs, config, last_event_id: int | None = None):
 
 @router.post("/run_sse", tags=["agent"])
 @limiter.limit(lambda: get_settings().rate_limit)
-async def run_sse(request: Request, req: AgentRunRequest):
-    """流式运行 agent（SSE）。支持 Last-Event-ID 断线重连。工具需审批时推 interrupt."""
+async def run_sse(request: Request, req: AgentRunRequest, background_tasks: BackgroundTasks):
+    """流式运行 agent（SSE）。支持 Last-Event-ID 断线重连 + mem0 长期记忆（检索注入/自动提取）."""
     agent = get_react_agent()
     config = {
         "configurable": {"thread_id": req.threadId},
@@ -85,7 +86,19 @@ async def run_sse(request: Request, req: AgentRunRequest):
     if last_id is not None:
         # 断线重连：只重放缓存事件，不重新执行 agent
         return EventSourceResponse(_stream_agent(agent, None, config, last_event_id=last_id))
-    inputs = {"messages": [HumanMessage(content=req.newMessage.content)]}
+    # mem0 检索注入：从长期记忆找相关，注入 system message
+    memories = search_memories(req.newMessage.content, req.userId or "")
+    if memories:
+        mem_text = "\n".join(f"- {m}" for m in memories)
+        inputs = {"messages": [
+            SystemMessage(content=f"以下是关于该用户的长期记忆，回答时可参考：\n{mem_text}"),
+            HumanMessage(content=req.newMessage.content),
+        ]}
+    else:
+        inputs = {"messages": [HumanMessage(content=req.newMessage.content)]}
+    # mem0 自动提取：对话结束后后台提交（不阻塞 SSE 流）
+    if req.userId:
+        background_tasks.add_task(extract_memories, req.threadId, req.userId)
     return EventSourceResponse(_stream_agent(agent, inputs, config))
 
 

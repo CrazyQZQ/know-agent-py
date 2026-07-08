@@ -14,7 +14,7 @@
 
 | 批次 | 项数 | 完成 | 状态 |
 |---|---|---|---|
-| 第一批 · 落地及格线 | 5 | 5 | 完成 |
+| 第一批 · 落地及格线 | 6 | 6 | 完成 |
 | 第二批 · 生产可用 | 6 | 6 | 完成 |
 | 第三批 · 持续优化 | 4 | 0 | 待开始 |
 | 架构前置决策 | 2 | 2 | 已决策 |
@@ -121,6 +121,20 @@
     - `tests/test_search.py`：keyword/vector/hybrid
     - agent 工具测试用 mock LLM（不耗 token）
   - 验收：`uv run pytest` 全绿，覆盖率覆盖核心业务逻辑
+
+### 6. 记忆系统 - 会话历史 + 长期记忆
+
+- [x] **6.1 会话历史接口（短期记忆）**
+  - 现状：checkpoint 存了对话历史，但 get_thread 返回 state.values（含 langgraph Message 对象，FastAPI 无法序列化），进入旧会话看不到历史
+  - 目标：进入旧会话能拉取历史消息展示
+  - 改动点：`agents/thread.py` `_format_message` 格式化为 {role, content}；`get_thread` 返回 {thread_id, messages}；`GET /v1/.../threads/{id}/history`
+  - 验收：进入旧会话调 history 端点看到历史消息
+
+- [x] **6.2 mem0 长期记忆（云端，c 方案）**
+  - 现状：只有 checkpoint（短期），跨会话无记忆
+  - 目标：跨会话长期记忆（用户偏好/事实），自动提取 + 检索注入
+  - 改动点：`agents/memory.py` get_memory（mem0 云端，无 key 旁路）+ search_memories + extract_memories；`run_sse` 检索注入 SystemMessage + BackgroundTasks 自动提取；`MEM0_API_KEY` 配置
+  - 验收：对话后 mem0 存记忆，下次对话注入相关记忆
 
 ---
 
