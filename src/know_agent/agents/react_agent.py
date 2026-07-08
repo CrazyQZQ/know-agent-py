@@ -10,10 +10,11 @@
 from functools import lru_cache
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import SummarizationMiddleware, ToolCallLimitMiddleware
+from langchain.agents.middleware import HumanInTheLoopMiddleware, SummarizationMiddleware, ToolCallLimitMiddleware
 
 from know_agent.agents.checkpoint import get_checkpointer
 from know_agent.agents.middleware import LoggingMiddleware
+from know_agent.configuration import get_settings
 from know_agent.llm.chat import get_chat_model
 from know_agent.tools.datetime import get_current_time
 from know_agent.tools.knowledge_base_search import knowledge_base_search
@@ -42,6 +43,20 @@ def get_tools():
     return [get_current_time, get_weather, knowledge_base_search, list_ppt_templates]
 
 
+def _build_middleware(chat):
+    """构建 agent middleware：日志 + 摘要 + 工具上限 + HITL（按配置）."""
+    mw = [
+        LoggingMiddleware(),
+        SummarizationMiddleware(model=chat, trigger=("messages", 20)),
+        ToolCallLimitMiddleware(run_limit=TOOL_CALL_LIMIT),
+    ]
+    # HITL 工具审批：HITL_TOOLS 配置的工具调用前 interrupt，等前端审批（resume_sse 恢复）
+    hitl_tools = [t.strip() for t in (get_settings().hitl_tools or "").split(",") if t.strip()]
+    if hitl_tools:
+        mw.append(HumanInTheLoopMiddleware(interrupt_on={t: True for t in hitl_tools}))
+    return mw
+
+
 @lru_cache
 def get_react_agent():
     """构建并缓存 common-agent（create_agent + middleware）."""
@@ -50,10 +65,6 @@ def get_react_agent():
         model=chat,
         tools=get_tools(),
         system_prompt=SYSTEM_PROMPT,
-        middleware=[
-            LoggingMiddleware(),
-            SummarizationMiddleware(model=chat, trigger=("messages", 20)),
-            ToolCallLimitMiddleware(run_limit=TOOL_CALL_LIMIT),
-        ],
+        middleware=_build_middleware(chat),
         checkpointer=get_checkpointer(),
     )

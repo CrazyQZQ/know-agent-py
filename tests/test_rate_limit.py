@@ -24,6 +24,10 @@ class _FakeAgent:
     def invoke(self, inputs, config):
         return {"messages": [_FakeMessage("ok", "AIMessage")]}
 
+    def get_state(self, config):
+        from types import SimpleNamespace
+        return SimpleNamespace(tasks=(), next=())
+
 
 def _reset_limiter_storage() -> None:
     """清除 slowapi 内存计数器，隔离前后测试."""

@@ -86,6 +86,8 @@ class Settings(BaseSettings):
 
     # API 限流（slowapi，按 IP 限流，保护 agent/graph 等高成本端点）
     rate_limit: str = "60/minute"
+    # HITL 工具审批：逗号分隔的工具名，这些工具调用前 interrupt 等前端审批（空=不启用）
+    hitl_tools: str = ""
 
     # 可观测性 — LangSmith tracing（langchain 内置，设环境变量即生效，无需改业务代码）
     langsmith_tracing: bool = False
