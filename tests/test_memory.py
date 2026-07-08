@@ -69,3 +69,39 @@ def test_extract_memories_no_key_noop(monkeypatch):
     monkeypatch.setattr("know_agent.agents.checkpoint.get_checkpointer", lambda: mock_cp)
     mem_module.extract_memories("t1", "user1")
     mock_cp.get_state.assert_not_called()
+
+
+# ---- save_memory 工具（显式"记住XXX"）----
+
+def test_save_memory_calls_add(monkeypatch):
+    from know_agent.tools.memory import save_memory
+
+    mock_m = MagicMock()
+    monkeypatch.setattr("know_agent.agents.memory.get_memory", lambda: mock_m)
+    monkeypatch.setattr("langgraph.config.get_config", lambda: {"metadata": {"user_id": "u1"}})
+
+    result = save_memory.invoke({"content": "我喜欢咖啡"})
+    mock_m.add.assert_called_once_with("我喜欢咖啡", user_id="u1")
+    assert "已记住" in result
+
+
+def test_save_memory_no_key(monkeypatch):
+    from know_agent.tools.memory import save_memory
+
+    monkeypatch.setattr("know_agent.agents.memory.get_memory", lambda: None)
+    monkeypatch.setattr("langgraph.config.get_config", lambda: {"metadata": {"user_id": "u1"}})
+
+    result = save_memory.invoke({"content": "x"})
+    assert "未配置" in result
+
+
+def test_save_memory_no_user(monkeypatch):
+    from know_agent.tools.memory import save_memory
+
+    mock_m = MagicMock()
+    monkeypatch.setattr("know_agent.agents.memory.get_memory", lambda: mock_m)
+    monkeypatch.setattr("langgraph.config.get_config", lambda: {"metadata": {}})
+
+    result = save_memory.invoke({"content": "x"})
+    assert "无法识别用户" in result
+    mock_m.add.assert_not_called()
