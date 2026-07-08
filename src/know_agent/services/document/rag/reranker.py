@@ -6,6 +6,12 @@ cross-encoder 比 bi-encoder 向量检索更精准，适合对候选池精排。
 
 import requests
 from loguru import logger
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from know_agent.configuration import get_settings
 from know_agent.services.document.search import SearchResult
@@ -37,22 +43,7 @@ class Reranker:
             logger.info("[rag] rerank 未启用，使用 RRF 排序")
             return results[:top_k]
         try:
-            resp = requests.post(
-                JINA_RERANK_URL,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "query": query,
-                    "documents": [r.text for r in results],
-                    "top_n": top_k,
-                },
-                timeout=RERANK_TIMEOUT,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            data = self._call_jina(query, [r.text for r in results], top_k)
             out: list[SearchResult] = []
             for item in data["results"]:
                 r = results[item["index"]]
@@ -64,3 +55,28 @@ class Reranker:
         except Exception as e:
             logger.warning("[rag] Jina rerank 失败，降级为 RRF 排序: {}", e)
             return results[:top_k]
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        retry=retry_if_exception_type(requests.RequestException),
+        reraise=True,
+    )
+    def _call_jina(self, query: str, documents: list[str], top_n: int) -> dict:
+        """调用 Jina Rerank API（tenacity 重试 + 超时，重试耗尽抛原异常由 rerank 降级）."""
+        resp = requests.post(
+            JINA_RERANK_URL,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.model,
+                "query": query,
+                "documents": documents,
+                "top_n": top_n,
+            },
+            timeout=RERANK_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json()

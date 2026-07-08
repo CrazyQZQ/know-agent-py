@@ -40,7 +40,13 @@ class OssService:
             aws_secret_access_key=s.s3_secret_key,
             region_name=s.s3_region,
             # RustFS / 自建 S3 需 path style
-            config=Config(s3={"addressing_style": "path"}),
+            # 外部调用重试与超时（boto3 内置）：网络抖动自动重试
+            config=Config(
+                s3={"addressing_style": "path"},
+                retries={"max_attempts": 3, "mode": "standard"},
+                connect_timeout=5,
+                read_timeout=30,
+            ),
         )
 
     def _ensure_bucket(self, public_read: bool = True) -> None:

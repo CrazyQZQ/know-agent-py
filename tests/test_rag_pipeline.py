@@ -6,6 +6,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from know_agent.services.document.rag.injector import inject
 from know_agent.services.document.rag.query_transformer import QueryTransformer
 from know_agent.services.document.rag.reranker import Reranker
@@ -111,8 +113,40 @@ def test_rerank_jina_failure_degrades():
     r = Reranker(api_key="fake-key", enabled=True)
     with patch("know_agent.services.document.rag.reranker.requests.post", side_effect=RuntimeError("net")):
         out = r.rerank("q", _results(3), top_k=2)
-    # 调用失败 → 降级 RRF 原序
+    # 非网络异常不重试，直接降级 RRF 原序
     assert [x.segment_id for x in out] == [0, 1]
+
+
+def test_rerank_retries_on_network_error(monkeypatch):
+    """网络抖动（RequestException）触发 tenacity 重试 3 次后降级."""
+    import time
+    monkeypatch.setattr(time, "sleep", lambda *a: None)  # 跳过退避等待
+    r = Reranker(api_key="fake-key", enabled=True)
+    with patch(
+        "know_agent.services.document.rag.reranker.requests.post",
+        side_effect=requests.ConnectionError("net"),
+    ) as mock_post:
+        out = r.rerank("q", _results(3), top_k=2)
+    assert mock_post.call_count == 3  # 重试 3 次
+    assert [x.segment_id for x in out] == [0, 1]  # 降级 RRF 原序
+
+
+def test_rerank_retries_then_succeeds(monkeypatch):
+    """前次网络错误、后次成功 → 重试后返回 Jina 结果（不降级）."""
+    import time
+    monkeypatch.setattr(time, "sleep", lambda *a: None)
+    r = Reranker(api_key="fake-key", enabled=True)
+    fake_resp = MagicMock()
+    fake_resp.raise_for_status.return_value = None
+    fake_resp.json.return_value = {"results": [{"index": 1, "relevance_score": 0.9}]}
+    with patch(
+        "know_agent.services.document.rag.reranker.requests.post",
+        side_effect=[requests.ConnectionError("net"), fake_resp],
+    ) as mock_post:
+        out = r.rerank("q", _results(2), top_k=1)
+    assert mock_post.call_count == 2  # 第 1 次失败，第 2 次成功
+    assert out[0].segment_id == 1
+    assert out[0].source == "rerank"
 
 
 def test_rerank_empty_returns_empty():
