@@ -63,6 +63,7 @@ tmp/
 # Node / 前端（know-agent-ui）
 node_modules/
 .next/
+*.tsbuildinfo
 out/
 .env.local
 .env.*.local
