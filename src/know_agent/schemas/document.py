@@ -21,6 +21,7 @@ class DocumentOut(BaseModel):
     description: str | None = None
     knowledge_base_type: str | None = None
     extension: dict | None = None
+    error_message: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

@@ -1,9 +1,10 @@
 """文档处理服务 — 状态机：upload → process → split → embed.
 
 对应源项目 DocumentProcessServiceImpl + MinerUProcessBaseServiceImpl（processDocument 部分）。
-源项目 processDocument 异步（虚拟线程），这里简化为同步：upload 接口内完成解析。
+upload 仅入库 + OSS 上传即返回；解析/分块/向量化由 BackgroundTasks 异步执行
+（run_document_pipeline，独立 session），前端轮询 GET /{doc_id} 看 status 流转。
 
-split 后分块入 MySQL（业务）；embed 时入 pgvector（向量）。
+split 后分块入 PG（业务）；embed 时入 pgvector（向量）。
 关键词检索使用 PG 内置 pg_trgm（见 services/document/search.py），无需额外入库。
 混合检索 = pg_trgm 关键词 + pgvector 向量 + RRF 融合。
 """
@@ -65,8 +66,7 @@ class DocumentProcessService:
         if params.table_name:
             document.extension = {"tableName": params.table_name, "isOverride": False}
         self.repo.save_document(document)
-        # 同步解析（源项目异步，这里简化）
-        self._process_document(document, content, file_name)
+        # 解析/分块/向量化由后台任务异步执行（见 run_document_pipeline），upload 立即返回
         return document
 
     def _process_document(self, document: KnowledgeDocument, content: bytes, file_name: str) -> None:
@@ -201,6 +201,66 @@ class DocumentProcessService:
         doc_id = segment.embedding_id or f"doc-{segment.document_id}-segment-{segment.id}"
         return Document(id=doc_id, page_content=segment.text, metadata=metadata)
 
+    # ---------- pipeline（后台全链路）----------
+    def run_pipeline(self, doc_id: int) -> None:
+        """后台全链路处理：解析 → 分块 → 向量化。
+
+        每步独立 try/except，失败标记 status=FAILED + error_message，前端轮询可见。
+        """
+        document = self.repo.get_document(doc_id)
+        if document is None:
+            logger.warning("pipeline: document {} not found", doc_id)
+            return
+        if document.status != DocumentStatus.UPLOADED:
+            logger.info("pipeline: document {} status={}, skip", doc_id, document.status)
+            return
+
+        file_name = document.doc_title or ""
+        # 1. 解析（UPLOADED → CONVERTING → CONVERTED / STORED）
+        try:
+            content = get_oss().download(_extract_object_name(document.doc_url)).read()
+            self._process_document(document, content, file_name)
+        except Exception as e:
+            # _process_document 内部已记录异常日志
+            self._mark_failed(doc_id, f"解析失败: {e}")
+            return
+        # 解析后仍为 UPLOADED：未处理的文件类型（_process_document 仅 warning 返回）
+        if document.status == DocumentStatus.UPLOADED:
+            self._mark_failed(doc_id, f"不支持的文件类型: {file_name}")
+            return
+        # 非向量类型到 STORED 终态，无需分块/向量化
+        if document.status == DocumentStatus.STORED:
+            logger.info("pipeline: document {} reached STORED (non-vector)", doc_id)
+            return
+
+        # 2. 分块（CONVERTED → CHUNKED）
+        try:
+            self.split(doc_id, SplitParams())
+        except Exception as e:
+            logger.exception("document split failed: {}", doc_id)
+            self._mark_failed(doc_id, f"分块失败: {e}")
+            return
+
+        # 3. 向量化（CHUNKED → VECTOR_STORED）
+        try:
+            self.embed_and_store(doc_id)
+        except Exception as e:
+            logger.exception("document embed failed: {}", doc_id)
+            self._mark_failed(doc_id, f"向量化失败: {e}")
+            return
+
+        logger.info("pipeline done: document {} → VECTOR_STORED", doc_id)
+
+    def _mark_failed(self, doc_id: int, message: str) -> None:
+        self.db.rollback()  # 清理事务残留，确保错误标记能写入
+        document = self.repo.get_document(doc_id)
+        if document is None:
+            return
+        document.status = DocumentStatus.FAILED
+        document.error_message = message[:1000]
+        self.repo.update_document(document)
+        logger.error("pipeline failed: document {} — {}", doc_id, message)
+
     # ---------- delete ----------
     def delete_document(self, doc_id: int) -> bool:
         document = self.repo.get_document(doc_id)
@@ -239,3 +299,28 @@ def _extract_object_name(url: str) -> str:
         return url.rsplit("/", 1)[-1]
     start = idx + len(bucket) + 1
     return url[start:] if start < len(url) else ""
+
+
+def run_document_pipeline(doc_id: int) -> None:
+    """后台任务入口：独立 session 执行文档全链路处理（解析 → 分块 → 向量化）。
+
+    用独立 SessionLocal（不复用请求 session），避免长时间占用请求连接池。
+    由 FastAPI BackgroundTasks 调用。
+    """
+    from know_agent.db.postgres import SessionLocal
+
+    if SessionLocal is None:
+        logger.error("SessionLocal 未配置，无法执行后台任务 doc_id={}", doc_id)
+        return
+    db = SessionLocal()
+    try:
+        DocumentProcessService(db).run_pipeline(doc_id)
+    except Exception:
+        # run_pipeline 内部已对各步骤 try/except 标记 FAILED，这里兜底未预见异常
+        logger.exception("文档处理后台任务未捕获异常 doc_id={}", doc_id)
+        try:
+            DocumentProcessService(db)._mark_failed(doc_id, "后台任务未捕获异常")
+        except Exception:
+            logger.exception("标记失败状态也失败 doc_id={}", doc_id)
+    finally:
+        db.close()

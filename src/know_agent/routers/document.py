@@ -1,6 +1,6 @@
 """文档管理路由 — 对应源项目 KnowledgeDocumentController + KnowledgeSegmentController."""
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from know_agent.configuration import get_settings
@@ -10,7 +10,7 @@ from know_agent.models.enums import DocumentStatus
 from know_agent.schemas.document import DocumentOut, PageResponse, SearchResultOut, SegmentOut
 from know_agent.services.document.repository import DocumentRepository
 from know_agent.services.document.search import SearchService
-from know_agent.services.document.service import DocumentProcessService, UploadParams
+from know_agent.services.document.service import DocumentProcessService, UploadParams, run_document_pipeline
 from know_agent.services.document.splitter import SplitParams
 
 router = APIRouter()
@@ -21,6 +21,7 @@ segment_router = APIRouter()
 
 @router.post("/upload", response_model=DocumentOut)
 async def upload(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     upload_user: str = Form(...),
     title: str = Form(...),
@@ -48,6 +49,8 @@ async def upload(
         table_name=table_name,
     )
     doc = DocumentProcessService(db).upload(file.filename or "file", content, params)
+    # 注册后台全链路处理（解析 → 分块 → 向量化），upload 立即返回 UPLOADED，前端轮询状态
+    background_tasks.add_task(run_document_pipeline, doc.doc_id)
     return DocumentOut.model_validate(doc)
 
 

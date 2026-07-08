@@ -34,6 +34,8 @@ class KnowledgeDocument(Base, TimestampMixin, SoftDeleteMixin):
     )
     # extension 存 JSON（isOverride / tableName 等），对应源项目 extension 字段
     extension: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # 异步处理失败时的错误信息（status=FAILED 时填充），便于前端轮询展示
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
         return f"<KnowledgeDocument doc_id={self.doc_id} title={self.doc_title!r} status={self.status}>"

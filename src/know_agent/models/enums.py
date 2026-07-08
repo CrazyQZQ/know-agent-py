@@ -13,6 +13,7 @@ class DocumentStatus(str, Enum):
     CHUNKED = "CHUNKED"
     VECTOR_STORED = "VECTOR_STORED"
     STORED = "STORED"  # 不需要向量存储的终态
+    FAILED = "FAILED"  # 异步处理失败（解析/分块/向量化任一步失败）
 
 
 class SegmentStatus(str, Enum):
