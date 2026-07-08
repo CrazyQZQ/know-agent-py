@@ -178,7 +178,7 @@ class DocumentProcessService:
             segments = self.repo.get_pending_segments(doc_id)
             if not segments:
                 break
-            docs = [self._to_langchain_document(s) for s in segments]
+            docs = [self._to_langchain_document(s, accessible_by=document.accessible_by) for s in segments]
             ids = [d.id for d in docs]
             for i in range(0, len(docs), 10):
                 vectorstore.add_documents(docs[i:i + 10], ids=ids[i:i + 10])
@@ -193,12 +193,20 @@ class DocumentProcessService:
             return True
         return False
 
-    def _to_langchain_document(self, segment: KnowledgeSegment) -> Document:
+    def _to_langchain_document(
+        self, segment: KnowledgeSegment, accessible_by: str | None = None,
+    ) -> Document:
         metadata = dict(segment.metadata_ or {})
         metadata["document_id"] = segment.document_id
         metadata["chunk_id"] = segment.chunk_id
         metadata["chunk_order"] = segment.chunk_order
         metadata["segment_id"] = segment.id
+        # 显式注入 accessible_by（覆盖 segment 旧值，保证向量 metadata 与文档权限一致，
+        # 避免文档改权限后 segment.metadata_ 不同步导致召回过滤失效）
+        if accessible_by:
+            metadata[MetadataKey.ACCESSIBLE_BY] = accessible_by
+        else:
+            metadata.pop(MetadataKey.ACCESSIBLE_BY, None)
         doc_id = segment.embedding_id or f"doc-{segment.document_id}-segment-{segment.id}"
         return Document(id=doc_id, page_content=segment.text, metadata=metadata)
 

@@ -124,3 +124,84 @@ def test_embed_and_store_uses_kb_type_collection(monkeypatch):
     assert svc.embed_and_store(1) is True
     assert called[-1] == "know_agent_DOCUMENT_SEARCH"
     assert doc.status == DocumentStatus.VECTOR_STORED
+
+
+def test_embed_and_store_injects_accessible_by(monkeypatch):
+    """embed_and_store 把 document.accessible_by 注入向量 metadata，保证召回可按角色过滤."""
+    from know_agent.models.document import KnowledgeDocument, KnowledgeSegment
+    from know_agent.models.enums import DocumentStatus, KnowledgeBaseType, SegmentStatus
+    from know_agent.services.document.service import DocumentProcessService
+
+    added: list = []
+
+    def fake_add(docs, ids):
+        added.extend(docs)
+
+    mock_vs = MagicMock()
+    mock_vs.add_documents = fake_add
+    monkeypatch.setattr(
+        "know_agent.services.document.service.get_vectorstore",
+        lambda collection_name="know_agent": mock_vs,
+    )
+
+    doc = KnowledgeDocument(
+        doc_id=1, doc_title="t", status=DocumentStatus.CHUNKED,
+        knowledge_base_type=KnowledgeBaseType.DOCUMENT_SEARCH,
+        accessible_by="admin,editor",
+    )
+    segment = KnowledgeSegment(
+        id=1, text="hello", document_id=1, chunk_order=0,
+        status=SegmentStatus.STORED, skip_embedding=0, metadata_={},
+    )
+
+    svc = DocumentProcessService(MagicMock())
+    svc.repo = MagicMock()
+    svc.repo.get_document.return_value = doc
+    svc.repo.get_pending_segments.side_effect = [[segment], []]
+    svc.repo.count_pending_segments.return_value = 0
+
+    svc.embed_and_store(1)
+
+    assert len(added) == 1
+    assert added[0].metadata["accessibleBy"] == "admin,editor"
+
+
+def test_embed_and_store_omits_accessible_by_for_public(monkeypatch):
+    """公开文档 embed 时清除 segment 旧 accessibleBy（_can_access 视为公开）."""
+    from know_agent.models.document import KnowledgeDocument, KnowledgeSegment
+    from know_agent.models.enums import DocumentStatus, KnowledgeBaseType, SegmentStatus
+    from know_agent.services.document.service import DocumentProcessService
+
+    added: list = []
+
+    def fake_add(docs, ids):
+        added.extend(docs)
+
+    mock_vs = MagicMock()
+    mock_vs.add_documents = fake_add
+    monkeypatch.setattr(
+        "know_agent.services.document.service.get_vectorstore",
+        lambda collection_name="know_agent": mock_vs,
+    )
+
+    doc = KnowledgeDocument(
+        doc_id=1, doc_title="t", status=DocumentStatus.CHUNKED,
+        knowledge_base_type=KnowledgeBaseType.DOCUMENT_SEARCH,
+        accessible_by=None,
+    )
+    segment = KnowledgeSegment(
+        id=1, text="hello", document_id=1, chunk_order=0,
+        status=SegmentStatus.STORED, skip_embedding=0,
+        metadata_={"accessibleBy": "stale_role"},  # segment 旧值，应被清除
+    )
+
+    svc = DocumentProcessService(MagicMock())
+    svc.repo = MagicMock()
+    svc.repo.get_document.return_value = doc
+    svc.repo.get_pending_segments.side_effect = [[segment], []]
+    svc.repo.count_pending_segments.return_value = 0
+
+    svc.embed_and_store(1)
+
+    assert len(added) == 1
+    assert "accessibleBy" not in added[0].metadata
