@@ -52,6 +52,8 @@ uv run pytest tests/test_foo.py::test_bar        # 跑单个测试
 - **langgraph 3.x checkpoint 表名**：`checkpoints` / `checkpoint_writes` / `checkpoint_blobs`（不是 `writes`）。`agents/thread.py` 的 `delete_thread` 删这三张表。
 - **OSS endpoint 自动补全**（`services/oss.py`）：`_normalize_endpoint` 会给无 scheme 的 endpoint 补 `http://` + 默认端口 9000（RustFS 默认）。相对路径的 `template_url`（如 `ppt-templates/ai.pptx`）直接用作 object name，不要截成 `ai.pptx`。
 - **PPT 模板**：仅 `ai` 模板（`graphs/ppt/nodes.py` 硬编码），需预先上传 `ppt-templates/ai.pptx` 到 RustFS。`render_ppt.py` 在 Windows 下有非致命 gbk 编码警告。
+- **mem0 2.x 用 `MemoryClient` 而非 `Memory`**（`agents/memory.py`）：`Memory` 是自托管（`config` 入参），`MemoryClient` 才是云端 OpenMemory（`api_key` 入参，对应 `MEM0_API_KEY`）。`Memory(api_key=...)` 是 1.x 旧 API，2.x 会报 `unexpected keyword argument 'api_key'`。`MemoryClient.search` 不接受 top-level `user_id`（须 `filters={"user_id":...}`），`limit` 改名 `top_k`，返回 `{"results":[...]}`（v1.1 格式，非 list）。`add` 仍接受 `user_id` kwarg 且 messages 支持 str/list/dict。`MemoryClient.__init__` 会联网 `_validate_api_key()`，key 无效则构造抛异常被 `get_memory` try/except 旁路。
+- **`@tool` 必须在 `@resilient` 外层**（`core/resilient.py`）：顺序是 `@tool` → `@resilient(fallback=...)` → `def fn`。反了 `@tool` 会读到装饰器包装后的签名，给 LLM 的工具 schema 就错了。`@resilient` 内部用 `functools.wraps` 保留原始签名+docstring，`@tool` 才能正确生成 schema。`fallback` 是给 LLM 看的降级文本（每个工具定制，应指引后续动作），不是给人看的报错。`circuit=True` 启用熔断（仅重资源工具开，如 `knowledge_base_search`；简单工具默认只降级）。熔断状态进程内、每工具独立，多 worker 不共享。
 
 ## 环境变量
 
