@@ -147,6 +147,12 @@ def get_thread(appName: str, userId: str, threadId: str) -> dict:
     return t
 
 
+@router.get("/apps/{appName}/users/{userId}/threads/{threadId}/history", tags=["agent"])
+def thread_history(appName: str, userId: str, threadId: str) -> list[dict]:
+    """获取 thread 历史消息（进入旧会话时拉取展示）."""
+    return thread_service.get_thread_history(threadId)
+
+
 @router.post("/apps/{appName}/users/{userId}/threads", tags=["agent"])
 def create_thread(appName: str, userId: str) -> dict:
     tid = thread_service.create_thread()
