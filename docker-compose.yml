@@ -1,0 +1,54 @@
+services:
+  db:
+    # pgvector 官方镜像：内置 vector 扩展；pg_trgm 是 PG contrib 默认包含
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: know_agent
+      POSTGRES_PASSWORD: know_agent
+      POSTGRES_DB: know_agent
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 首次启动自动建扩展（库由 POSTGRES_DB 自动创建，无需 init_db.sql 的 CREATE DATABASE）
+      - ./scripts/init_extensions.sql:/docker-entrypoint-initdb.d/init_extensions.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U know_agent -d know_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # 固定指向 compose 内的 db（密码无特殊字符，无需 percent-encode）
+      DATABASE_URL: postgresql+psycopg://know_agent:know_agent@db:5432/know_agent
+      APP_ENV: dev
+      AUTH_ENABLED: "false"
+      CORS_ORIGINS: "*"
+      # 以下从 .env 注入（compose 自动读取项目根 .env 做变量插值）；未配置时工厂返回 None，服务仍可起
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      ARK_API_KEY: ${ARK_API_KEY:-}
+      ARK_BASE_URL: ${ARK_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      ARK_EMBEDDING_MODEL: ${ARK_EMBEDDING_MODEL:-doubao-embedding-vision}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-2048}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      JINA_API_KEY: ${JINA_API_KEY:-}
+      JINA_MCP_URL: ${JINA_MCP_URL:-https://mcp.jina.ai/sse}
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-know-agent}
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
