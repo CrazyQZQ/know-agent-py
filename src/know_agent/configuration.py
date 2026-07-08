@@ -88,6 +88,8 @@ class Settings(BaseSettings):
     rate_limit: str = "60/minute"
     # HITL 工具审批：逗号分隔的工具名，这些工具调用前 interrupt 等前端审批（空=不启用）
     hitl_tools: str = ""
+    # pgvector HNSW 检索候选池大小（越大召回越高、越慢；HNSW 索引由 alembic 0004 建）
+    hnsw_ef_search: int = 40
 
     # 可观测性 — LangSmith tracing（langchain 内置，设环境变量即生效，无需改业务代码）
     langsmith_tracing: bool = False

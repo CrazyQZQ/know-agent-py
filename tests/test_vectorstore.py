@@ -205,3 +205,9 @@ def test_embed_and_store_omits_accessible_by_for_public(monkeypatch):
 
     assert len(added) == 1
     assert "accessibleBy" not in added[0].metadata
+
+
+def test_hnsw_ef_search_config_default():
+    """hnsw_ef_search 配置项默认 40."""
+    from know_agent.configuration import Settings
+    assert Settings().hnsw_ef_search == 40
