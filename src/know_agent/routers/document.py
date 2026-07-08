@@ -99,6 +99,7 @@ def search(
     q: str = Query(..., description="检索关键词/问句"),
     top_k: int = Query(10, ge=1, le=50),
     mode: str = Query("hybrid", pattern="^(keyword|vector|hybrid)$"),
+    knowledge_base_type: str | None = Query(None, description="知识库类型，按类型隔离向量检索"),
     db: Session = Depends(get_db),
 ) -> list:
     """混合检索：keyword(pg_trgm) / vector(pgvector) / hybrid(RRF 融合). 按 accessible_by 角色过滤."""
@@ -107,9 +108,9 @@ def search(
     if mode == "keyword":
         results = svc.keyword_search(q, top_k=top_k, roles=roles)
     elif mode == "vector":
-        results = svc.vector_search(q, top_k=top_k, roles=roles)
+        results = svc.vector_search(q, top_k=top_k, roles=roles, knowledge_base_type=knowledge_base_type)
     else:
-        results = svc.hybrid_search(q, top_k=top_k, roles=roles)
+        results = svc.hybrid_search(q, top_k=top_k, roles=roles, knowledge_base_type=knowledge_base_type)
     return [
         SearchResultOut(
             segment_id=r.segment_id, text=r.text, score=r.score,

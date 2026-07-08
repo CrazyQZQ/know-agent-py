@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from know_agent.services.document.vectorstore import get_vectorstore
+from know_agent.services.document.vectorstore import collection_for, get_vectorstore
 
 RRF_K = 60  # RRF 常数，与源项目 HybridEsDocumentRetriever 一致
 
@@ -84,17 +84,20 @@ class SearchService:
             for r in rows
         ]
 
-    def vector_search(self, query: str, top_k: int = 10, roles: list[str] | None = None) -> list[SearchResult]:
+    def vector_search(self, query: str, top_k: int = 10, roles: list[str] | None = None,
+                      knowledge_base_type: str | None = None) -> list[SearchResult]:
         """pgvector 向量检索（cosine 距离，越小越相似）.
 
         PGVector metadata filter 难以表达"为空 OR 包含"语义，
         改为 over-fetch 后 Python 侧按 accessible_by 角色过滤。
+        knowledge_base_type 指定时按类型隔离 collection 检索。
         """
-        if not self.vectorstore:
+        vs = get_vectorstore(collection_for(knowledge_base_type)) if knowledge_base_type else self.vectorstore
+        if not vs:
             return []
         # over-fetch 3 倍以补偿权限过滤导致的结果减少
         fetch_k = top_k * 3 if roles else top_k
-        results = self.vectorstore.similarity_search_with_score(query, k=fetch_k)
+        results = vs.similarity_search_with_score(query, k=fetch_k)
         out: list[SearchResult] = []
         for doc, distance in results:
             meta = doc.metadata or {}
@@ -113,10 +116,13 @@ class SearchService:
                 break
         return out
 
-    def hybrid_search(self, query: str, top_k: int = 10, roles: list[str] | None = None) -> list[SearchResult]:
-        """RRF 融合：keyword + vector. score = Σ 1/(K + rank). 按 roles 过滤权限."""
+    def hybrid_search(self, query: str, top_k: int = 10, roles: list[str] | None = None,
+                      knowledge_base_type: str | None = None) -> list[SearchResult]:
+        """RRF 融合：keyword + vector. score = Σ 1/(K + rank). 按 roles 过滤权限.
+        knowledge_base_type 透传给向量检索（按类型隔离 collection）.
+        """
         kw = self.keyword_search(query, top_k=top_k, roles=roles)
-        vec = self.vector_search(query, top_k=top_k, roles=roles)
+        vec = self.vector_search(query, top_k=top_k, roles=roles, knowledge_base_type=knowledge_base_type)
 
         scores: dict[int, float] = {}
         results: dict[int, SearchResult] = {}

@@ -9,12 +9,13 @@ from langchain_core.tools import tool
 
 
 @tool
-def knowledge_base_search(query: str, top_k: int = 5) -> str:
+def knowledge_base_search(query: str, top_k: int = 5, knowledge_base_type: str | None = None) -> str:
     """根据用户问题查询知识库，返回带来源标注的相关文档片段。用于回答知识库相关问题.
 
     Args:
         query: 用户问题或检索意图（自然语言）
         top_k: 返回的文档片段数量，默认 5
+        knowledge_base_type: 知识库类型（如 DOCUMENT_SEARCH），按类型隔离向量检索；None 用默认 collection
     """
     from know_agent.core.request_context import get_current_roles
     from know_agent.db.postgres import SessionLocal
@@ -23,6 +24,8 @@ def knowledge_base_search(query: str, top_k: int = 5) -> str:
 
     db = SessionLocal()
     try:
-        return RagPipeline(SearchService(db)).run(query, top_k=top_k, roles=get_current_roles())
+        return RagPipeline(SearchService(db)).run(
+            query, top_k=top_k, roles=get_current_roles(), knowledge_base_type=knowledge_base_type,
+        )
     finally:
         db.close()

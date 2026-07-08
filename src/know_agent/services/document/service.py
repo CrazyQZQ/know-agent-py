@@ -27,7 +27,7 @@ from know_agent.services.document.splitter import (
     split,
     split_excel,
 )
-from know_agent.services.document.vectorstore import get_vectorstore
+from know_agent.services.document.vectorstore import collection_for, get_vectorstore
 from know_agent.services.oss import get_oss
 
 
@@ -169,7 +169,8 @@ class DocumentProcessService:
             return True
         if document.status != DocumentStatus.CHUNKED:
             return False
-        vectorstore = get_vectorstore()
+        kb_type = document.knowledge_base_type.value if document.knowledge_base_type else None
+        vectorstore = get_vectorstore(collection_for(kb_type))
         if vectorstore is None:
             raise RuntimeError("vectorstore 未配置")
 

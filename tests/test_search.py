@@ -76,7 +76,7 @@ def test_hybrid_search_rrf_fusion(monkeypatch):
         SearchResult(segment_id=1, text="a", score=0.9, source="keyword", metadata={}),
         SearchResult(segment_id=2, text="b", score=0.8, source="keyword", metadata={}),
     ])
-    monkeypatch.setattr(svc, "vector_search", lambda q, top_k=10, roles=None: [
+    monkeypatch.setattr(svc, "vector_search", lambda q, top_k=10, roles=None, knowledge_base_type=None: [
         SearchResult(segment_id=1, text="a", score=0.1, source="vector", metadata={}),
         SearchResult(segment_id=3, text="c", score=0.2, source="vector", metadata={}),
     ])
