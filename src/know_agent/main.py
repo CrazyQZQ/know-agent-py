@@ -5,8 +5,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from know_agent.configuration import get_settings
+from know_agent.core.limiter import limiter
 from know_agent.core.logging import setup_logging
 from know_agent.core.middleware import RequestIdMiddleware
 from know_agent.core.observability import setup_tracing
@@ -48,6 +52,10 @@ def create_app() -> FastAPI:
     )
     # request_id 注入（纯 ASGI，包住所有业务路由）
     app.add_middleware(RequestIdMiddleware)
+    # API 限流（slowapi）：保护高成本端点，超频返回 429
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:

@@ -2,12 +2,14 @@
 
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from langchain_core.messages import HumanMessage
 from sse_starlette.sse import EventSourceResponse
 
 from know_agent.agents import thread as thread_service
 from know_agent.agents.react_agent import AGENT_NAME, TOOL_CALL_LIMIT, get_react_agent
+from know_agent.configuration import get_settings
+from know_agent.core.limiter import limiter
 from know_agent.schemas.agent import AgentRunRequest, AgentResumeRequest
 
 router = APIRouter()
@@ -22,7 +24,8 @@ def list_apps() -> list[str]:
 
 
 @router.post("/run_sse", tags=["agent"])
-async def run_sse(req: AgentRunRequest):
+@limiter.limit(lambda: get_settings().rate_limit)
+async def run_sse(request: Request, req: AgentRunRequest):
     """流式运行 agent（SSE）."""
     agent = get_react_agent()
     config = {
@@ -54,7 +57,8 @@ async def resume_sse(req: AgentResumeRequest):
 
 
 @router.get("/chat/ask", tags=["agent"])
-def chat_ask(question: str) -> str:
+@limiter.limit(lambda: get_settings().rate_limit)
+def chat_ask(request: Request, question: str) -> str:
     """简单单轮对话（独立 thread）."""
     agent = get_react_agent()
     config = {

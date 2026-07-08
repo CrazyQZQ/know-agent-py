@@ -7,9 +7,11 @@ GET  /list-graphs     列出可用 graph
 
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
 
+from know_agent.configuration import get_settings
+from know_agent.core.limiter import limiter
 from know_agent.graphs.ppt.graph import GRAPH_NAME, get_ppt_graph
 from know_agent.schemas.graph import GraphResumeRequest, GraphRunRequest
 
@@ -70,7 +72,8 @@ def list_graphs() -> list[str]:
 
 
 @router.post("/graph_run_sse", tags=["graph"])
-async def graph_run_sse(req: GraphRunRequest):
+@limiter.limit(lambda: get_settings().rate_limit)
+async def graph_run_sse(request: Request, req: GraphRunRequest):
     graph = get_ppt_graph()
     config = _config(req.threadId)
     if req.inputs:

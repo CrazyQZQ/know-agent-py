@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     rag_rerank: bool = True  # Jina cross-encoder 重排序（无 key 自动降级为 RRF 排序）
     rag_rerank_model: str = "jina-reranker-v2-base-multilingual"
 
+    # API 限流（slowapi，按 IP 限流，保护 agent/graph 等高成本端点）
+    rate_limit: str = "60/minute"
+
     # 可观测性 — LangSmith tracing（langchain 内置，设环境变量即生效，无需改业务代码）
     langsmith_tracing: bool = False
     langsmith_api_key: str | None = None
