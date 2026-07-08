@@ -21,11 +21,14 @@ def test_search_memories_no_key_returns_empty(monkeypatch):
 
 def test_search_memories_calls_mem0(monkeypatch):
     mock_m = MagicMock()
-    mock_m.search.return_value = [{"memory": "喜欢咖啡"}, {"memory": "在北京"}, {"memory": ""}]
+    # mem0 2.x MemoryClient.search 返回 v1.1 格式 {"results": [...]}
+    mock_m.search.return_value = {
+        "results": [{"memory": "喜欢咖啡"}, {"memory": "在北京"}, {"memory": ""}]
+    }
     monkeypatch.setattr(mem_module, "get_memory", lambda: mock_m)
 
     result = mem_module.search_memories("query", "user1")
-    mock_m.search.assert_called_once_with("query", user_id="user1", limit=5)
+    mock_m.search.assert_called_once_with("query", filters={"user_id": "user1"}, top_k=5)
     assert result == ["喜欢咖啡", "在北京"]  # 空 memory 跳过
 
 
@@ -43,10 +46,14 @@ def test_extract_memories_calls_add(monkeypatch):
             self.content = c
 
     class _State:
-        values = {"messages": [_Msg("human", "hi"), _Msg("ai", "hello"), _Msg("tool", "x")]}
+        checkpoint = {
+            "channel_values": {
+                "messages": [_Msg("human", "hi"), _Msg("ai", "hello"), _Msg("tool", "x")]
+            }
+        }
 
     class _FakeCp:
-        def get_state(self, config):
+        def get_tuple(self, config):
             return _State()
 
     mock_m = MagicMock()
@@ -68,7 +75,7 @@ def test_extract_memories_no_key_noop(monkeypatch):
     monkeypatch.setattr(mem_module, "get_memory", lambda: None)
     monkeypatch.setattr("know_agent.agents.checkpoint.get_checkpointer", lambda: mock_cp)
     mem_module.extract_memories("t1", "user1")
-    mock_cp.get_state.assert_not_called()
+    mock_cp.get_tuple.assert_not_called()
 
 
 # ---- save_memory 工具（显式"记住XXX"）----

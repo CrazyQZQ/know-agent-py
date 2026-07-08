@@ -22,9 +22,10 @@ def get_memory():
     if not s.mem0_api_key:
         return None
     try:
-        from mem0 import Memory
+        from mem0 import MemoryClient
 
-        return Memory(api_key=s.mem0_api_key)
+        # mem0 2.x: Memory 用于自托管（config 入参），MemoryClient 用于云端 OpenMemory（api_key 入参）
+        return MemoryClient(api_key=s.mem0_api_key)
     except Exception as e:
         logger.warning("mem0 初始化失败，记忆系统旁路: {}", e)
         return None
@@ -36,7 +37,10 @@ def search_memories(query: str, user_id: str, limit: int = 5) -> list[str]:
     if m is None or not user_id:
         return []
     try:
-        results = m.search(query, user_id=user_id, limit=limit)
+        # mem0 2.x: user_id 不能作为 top-level 参数，须用 filters；limit 改名 top_k
+        resp = m.search(query, filters={"user_id": user_id}, top_k=limit)
+        # 返回 v1.1 格式 {"results": [...]}；兼容旧版直接返回 list
+        results = resp.get("results", []) if isinstance(resp, dict) else resp
         return [r["memory"] for r in results if r.get("memory")]
     except Exception as e:
         logger.warning("mem0 检索失败: {}", e)
@@ -54,10 +58,10 @@ def extract_memories(thread_id: str, user_id: str) -> None:
         cp = get_checkpointer()
         if cp is None:
             return
-        state = cp.get_state({"configurable": {"thread_id": thread_id}})
-        if not state or not state.values:
+        checkpoint_tuple = cp.get_tuple({"configurable": {"thread_id": thread_id}})
+        if not checkpoint_tuple:
             return
-        messages = state.values.get("messages", [])
+        messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
         # 转 mem0 格式 [{role, content}]，仅 human/ai
         msgs = []
         for msg in messages:
