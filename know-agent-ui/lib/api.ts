@@ -216,7 +216,6 @@ export async function listRoles(token: string | null): Promise<RoleItem[]> {
 export async function uploadDocument(token: string | null, form: FormData) {
   const payload = new FormData();
   payload.set("file", form.get("file") as Blob);
-  payload.set("upload_user", String(form.get("uploadUser") || "web"));
   payload.set("title", String(form.get("title") || "未命名文档"));
   payload.set("description", String(form.get("description") || ""));
   payload.set("knowledge_base_type", String(form.get("knowledgeBaseType") || "DOCUMENT_SEARCH"));

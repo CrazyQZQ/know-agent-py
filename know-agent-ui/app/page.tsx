@@ -1,81 +1,84 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   Avatar,
   Button,
   Card,
+  Col,
   ConfigProvider,
   Descriptions,
+  Flex,
   Form,
   Input,
   Layout,
   Menu,
   Modal,
   Popconfirm,
+  Row,
   Select,
   Space,
   Steps,
   Table,
   Tag,
   Typography,
+  Upload,
   message,
   theme as antdTheme
 } from "antd";
-import type { MenuProps } from "antd";
+import type { MenuProps, UploadFile } from "antd";
+import { Bubble, Conversations, Sender, XProvider, type BubbleListProps } from "@ant-design/x";
+import XMarkdown from "@ant-design/x-markdown";
+import { createStyles } from "antd-style";
 import {
-  ArrowUp,
-  Check,
   Copy,
   Database,
   Eye,
-  FileText,
-  Filter,
-  Loader2,
   LogOut,
   MessageSquare,
   Play,
   Plus,
   Presentation,
   RefreshCw,
-  Search,
-  ShieldCheck,
   Sparkles,
   Trash2,
   UploadCloud,
   UserRound,
-  Workflow,
-  X
+  Workflow
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import clsx from "clsx";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import "@ant-design/x-markdown/themes/light.css";
 import {
   clearAuth,
-  deleteThread,
   deleteDocument as deleteDocumentApi,
+  deleteThread,
   embedDocument,
+  getThreadHistory,
   listDocuments,
   listRoles,
   listSegmentsByDocument,
+  listThreads,
   login,
   logout,
   makeMessage,
   readAuth,
+  resumeSse,
   splitDocument,
   streamSse,
-  resumeSse,
   uploadDocument as uploadDocumentApi,
-  getThreadHistory,
-  listThreads,
   type AuthState,
   type RoleItem,
   type ThreadItem,
   type ToolFeedback
 } from "@/lib/api";
-import { documentLifecycle, type ChatMessage, type DocumentItem, type DocumentStatus, type SegmentItem } from "@/lib/mock-data";
+import {
+  documentLifecycle,
+  type ChatMessage,
+  type DocumentItem,
+  type DocumentStatus,
+  type SegmentItem
+} from "@/lib/mock-data";
 
 type MainTab = "assistant" | "workflow" | "knowledge";
 
@@ -85,10 +88,7 @@ const navItems: Array<{ key: MainTab; label: string; icon: LucideIcon }> = [
   { key: "knowledge", label: "知识库", icon: Database }
 ];
 
-type ThreadGroup = {
-  label: string;
-  items: ThreadItem[];
-};
+type ThreadGroup = { label: string; items: ThreadItem[] };
 
 function threadTitle(thread: ThreadItem) {
   return thread.name?.trim() || "新会话";
@@ -107,7 +107,6 @@ function groupThreadsByTime(threads: ThreadItem[], now = new Date()): ThreadGrou
     { label: "7 天内", items: [] },
     { label: "30 天内", items: [] }
   ];
-
   for (const thread of threads) {
     const rawDate = thread.updated_at || thread.created_at;
     const date = rawDate ? new Date(rawDate) : now;
@@ -117,13 +116,129 @@ function groupThreadsByTime(threads: ThreadItem[], now = new Date()): ThreadGrou
     else if (diff <= 7) groups[2].items.push(thread);
     else groups[3].items.push(thread);
   }
-
   return groups.filter((group) => group.items.length > 0);
 }
 
+type UploadValues = {
+  title: string;
+  description: string;
+  knowledgeBaseType: "DOCUMENT_SEARCH" | "DATA_QUERY";
+  tableName?: string;
+  accessibleBy?: string[];
+  file?: UploadFile[];
+};
+
+// 直接套用 ultramodern.tsx 的 createStyles（基于 antd token）
+const useStyle = createStyles(({ token, css }) => ({
+  layout: css`
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    background: ${token.colorBgContainer};
+    overflow: hidden;
+  `,
+  side: css`
+    background: ${token.colorBgLayout};
+    width: 280px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 0 12px;
+    box-sizing: border-box;
+    border-right: 1px solid ${token.colorBorderSecondary};
+  `,
+  logo: css`
+    display: flex;
+    align-items: center;
+    justify-content: start;
+    padding: 0 12px;
+    box-sizing: border-box;
+    gap: 8px;
+    margin: 16px 0 8px;
+    span {
+      font-weight: bold;
+      color: ${token.colorText};
+      font-size: 16px;
+    }
+  `,
+  menu: css`
+    padding: 0 4px 8px;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    margin-bottom: 8px;
+  `,
+  conversations: css`
+    overflow-y: auto;
+    margin-top: 4px;
+    padding: 0;
+    flex: 1;
+    min-height: 0;
+    .ant-conversations-list {
+      padding-inline-start: 0;
+    }
+  `,
+  sideFooter: css`
+    border-top: 1px solid ${token.colorBorderSecondary};
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px;
+  `,
+  chat: css`
+    height: 100%;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: ${token.colorBgContainer};
+    .ant-bubble-content-updating {
+      background-image: linear-gradient(90deg, #ff6b23 0%, #af3cb8 31%, #53b6ff 89%);
+      background-size: 100% 2px;
+      background-repeat: no-repeat;
+      background-position: bottom;
+    }
+  `,
+  chatList: css`
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 24px;
+    margin-block-start: ${token.margin}px;
+  `,
+  chatSender: css`
+    padding: ${token.paddingXS}px ${token.paddingLG}px;
+  `,
+  startPage: css`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+  `,
+  agentName: css`
+    margin-block-start: 25%;
+    font-size: 32px;
+    margin-block-end: 38px;
+    font-weight: 600;
+  `,
+  contentWrap: css`
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  `,
+  header: css`
+    height: 56px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    padding: 0 ${token.paddingLG}px;
+    background: ${token.colorBgContainer};
+  `
+}));
 
 export default function Home() {
-  const { Sider, Header, Content } = Layout;
+  const { styles } = useStyle();
   const [messageApi, contextHolder] = message.useMessage();
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [activeTab, setActiveTab] = useState<MainTab>("assistant");
@@ -140,7 +255,11 @@ export default function Home() {
   const [workflowInput, setWorkflowInput] = useState("");
   const [workflowRunning, setWorkflowRunning] = useState(false);
   const [workflowStep, setWorkflowStep] = useState(0);
-  const [workflowThreadId] = useState(() => crypto.randomUUID());
+  const [workflowThreadId, setWorkflowThreadId] = useState<string>(() => {
+    if (typeof window === "undefined") return crypto.randomUUID();
+    return window.localStorage.getItem("know-agent-workflow-thread") || crypto.randomUUID();
+  });
+  const [workflowThreads, setWorkflowThreads] = useState<ThreadItem[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [segments, setSegments] = useState<SegmentItem[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
@@ -151,7 +270,10 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [busyDocId, setBusyDocId] = useState<number | null>(null);
-  const [pendingApproval, setPendingApproval] = useState<{ action_requests: { name: string; args: Record<string, unknown> }[] } | null>(null);
+  const [knowledgeLoaded, setKnowledgeLoaded] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState<{
+    action_requests: { name: string; args: Record<string, unknown> }[];
+  } | null>(null);
   const assistantBufferRef = useRef<Record<string, string>>({});
 
   const token = auth?.token ?? null;
@@ -181,8 +303,28 @@ export default function Home() {
       })),
     []
   );
-  const threadGroups = useMemo(() => groupThreadsByTime(threads), [threads]);
-
+  const conversationItems = useMemo(
+    () =>
+      groupThreadsByTime(threads).flatMap((group) =>
+        group.items.map((thread) => ({
+          key: thread.thread_id,
+          label: threadTitle(thread),
+          group: group.label
+        }))
+      ),
+    [threads]
+  );
+  const workflowConversationItems = useMemo(
+    () =>
+      groupThreadsByTime(workflowThreads).flatMap((group) =>
+        group.items.map((thread) => ({
+          key: thread.thread_id,
+          label: threadTitle(thread),
+          group: group.label
+        }))
+      ),
+    [workflowThreads]
+  );
 
   useEffect(() => {
     const stored = readAuth();
@@ -190,11 +332,23 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!auth) return;
-    refreshDocuments();
-    listRoles(token).then(setRoles);
+    if (activeTab === "assistant" && token) loadThreads();
+    if (activeTab === "workflow" && token) loadWorkflowThreads();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth]);
+  }, [activeTab, token]);
+
+  useEffect(() => {
+    if (activeTab === "knowledge" && token && !knowledgeLoaded) {
+      setKnowledgeLoaded(true);
+      refreshDocuments();
+      listRoles(token).then(setRoles);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, token, knowledgeLoaded]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("know-agent-thread", threadId);
+  }, [threadId]);
 
   async function refreshDocuments() {
     setLoadingDocs(true);
@@ -207,7 +361,7 @@ export default function Home() {
     }
   }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     try {
@@ -223,23 +377,23 @@ export default function Home() {
     setAuth(null);
     setDocuments([]);
     setSegments([]);
+    setRoles([]);
+    setThreads([]);
+    setKnowledgeLoaded(false);
   }
 
-  async function sendMessage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const content = input.trim();
-    if (!content || streaming) return;
-
+  async function sendMessage(content: string) {
+    const text = content.trim();
+    if (!text || streaming) return;
     const assistantId = `assistant-${Date.now()}`;
     setInput("");
     setStreaming(true);
     setMessages((current) => [
       ...current,
-      makeMessage("user", content),
-      { ...makeMessage("assistant", "", ["event: message", "loading"]), id: assistantId }
+      makeMessage("user", text),
+      { ...makeMessage("assistant", "", ["loading"]), id: assistantId }
     ]);
     assistantBufferRef.current[assistantId] = "";
-
     try {
       await streamSse(
         "/run_sse",
@@ -247,7 +401,7 @@ export default function Home() {
           appName: "common_agent",
           userId: user?.name ?? "web",
           threadId,
-          newMessage: { content, role: "user" },
+          newMessage: { content: text, role: "user" },
           streaming: true,
           stateDelta: null
         },
@@ -263,9 +417,10 @@ export default function Home() {
           if (event === "interrupt") {
             delete assistantBufferRef.current[assistantId];
             setMessages((current) => current.filter((message) => message.id !== assistantId));
-            // HITL 工具审批：解析待审批工具，展示审批 UI
             try {
-              const hitl = JSON.parse(data) as { action_requests: { name: string; args: Record<string, unknown> }[] };
+              const hitl = JSON.parse(data) as {
+                action_requests: { name: string; args: Record<string, unknown> }[];
+              };
               setPendingApproval(hitl);
               setMessages((current) => [
                 ...current,
@@ -311,7 +466,7 @@ export default function Home() {
     }));
     setPendingApproval(null);
     const assistantId = `assistant-${Date.now()}`;
-    setMessages((current) => [...current, { ...makeMessage("assistant", "", ["event: resume", "loading"]), id: assistantId }]);
+    setMessages((current) => [...current, { ...makeMessage("assistant", "", ["loading"]), id: assistantId }]);
     assistantBufferRef.current[assistantId] = "";
     setStreaming(true);
     try {
@@ -327,9 +482,13 @@ export default function Home() {
           delete assistantBufferRef.current[assistantId];
           setMessages((current) => current.filter((message) => message.id !== assistantId));
           try {
-            const hitl = JSON.parse(data) as { action_requests: { name: string; args: Record<string, unknown> }[] };
+            const hitl = JSON.parse(data) as {
+              action_requests: { name: string; args: Record<string, unknown> }[];
+            };
             setPendingApproval(hitl);
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
           return;
         }
         assistantBufferRef.current[assistantId] = `${assistantBufferRef.current[assistantId] || ""}${data}`;
@@ -356,16 +515,62 @@ export default function Home() {
     }
   }
 
-  useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("know-agent-thread", threadId);
-  }, [threadId]);
-
   async function loadThreads() {
     if (!token || !user) return;
     try {
-      const data = await listThreads(token, "common_agent", user.name);
-      setThreads(data);
-    } catch { /* ignore */ }
+      setThreads(await listThreads(token, "common_agent", user.name));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function loadWorkflowThreads() {
+    if (!token || !user) return;
+    try {
+      setWorkflowThreads(await listThreads(token, "ppt_build", user.name));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function loadWorkflowHistory(tid: string) {
+    if (!token || !user) return;
+    try {
+      const history = await getThreadHistory(token, "ppt_build", user.name, tid);
+      setWorkflowMessages(history.map((h) => makeMessage(h.role === "user" ? "user" : "assistant", h.content)));
+    } catch {
+      setWorkflowMessages([]);
+    }
+  }
+
+  function createNewWorkflowThread() {
+    setWorkflowThreadId(crypto.randomUUID());
+    setWorkflowMessages([]);
+    setWorkflowSession(false);
+  }
+
+  function switchWorkflowThread(tid: string) {
+    setWorkflowThreadId(tid);
+    setWorkflowSession(true);
+    loadWorkflowHistory(tid);
+  }
+
+  async function removeWorkflowThread(tid: string) {
+    if (!token || !user) return;
+    try {
+      const result = await deleteThread(token, "ppt_build", user.name, tid);
+      if (!result.deleted) throw new Error("会话不存在或已被删除");
+      setWorkflowThreads((current) => current.filter((item) => item.thread_id !== tid));
+      if (tid === workflowThreadId) {
+        setWorkflowThreadId(crypto.randomUUID());
+        setWorkflowMessages([]);
+        setWorkflowSession(false);
+      }
+      messageApi.success("会话已删除");
+    } catch (err) {
+      loadWorkflowThreads();
+      showError(err, "删除会话失败");
+    }
   }
 
   async function loadHistory(tid: string) {
@@ -379,6 +584,7 @@ export default function Home() {
   }
 
   function createNewThread() {
+    if (messages.length) messageApi.info("已开启新会话");
     setThreadId(crypto.randomUUID());
     setMessages([]);
     setPendingApproval(null);
@@ -394,13 +600,10 @@ export default function Home() {
     if (!token || !user) return;
     try {
       const result = await deleteThread(token, "common_agent", user.name, tid);
-      if (!result.deleted) {
-        throw new Error("会话不存在或已被删除");
-      }
+      if (!result.deleted) throw new Error("会话不存在或已被删除");
       setThreads((current) => current.filter((item) => item.thread_id !== tid));
       if (tid === threadId) {
-        const nextThreadId = crypto.randomUUID();
-        setThreadId(nextThreadId);
+        setThreadId(crypto.randomUUID());
         setMessages([]);
         setPendingApproval(null);
       }
@@ -411,10 +614,6 @@ export default function Home() {
     }
   }
 
-  useEffect(() => {
-    if (activeTab === "assistant" && token) loadThreads();
-  }, [activeTab, token]);
-
   function startWorkflowSession() {
     setWorkflowSession(true);
     setWorkflowMessages([]);
@@ -422,15 +621,14 @@ export default function Home() {
     setWorkflowStep(0);
   }
 
-  async function runWorkflow(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
-    const content = workflowInput.trim();
-    if (!content || workflowRunning) return;
+  async function runWorkflow(content: string) {
+    const text = content.trim();
+    if (!text || workflowRunning) return;
     setWorkflowSession(true);
     setWorkflowRunning(true);
     setWorkflowStep(0);
-    setWorkflowMessages([makeMessage("user", content)]);
-
+    setWorkflowMessages([makeMessage("user", text)]);
+    setWorkflowInput("");
     try {
       await streamSse(
         "/graph_run_sse",
@@ -438,7 +636,7 @@ export default function Home() {
           graphName: "ppt_build",
           userId: user?.name ?? "web",
           threadId: workflowThreadId,
-          newMessage: { content, role: "user" },
+          newMessage: { content: text, role: "user" },
           inputs: null
         },
         token,
@@ -446,10 +644,7 @@ export default function Home() {
           if (event === "update") {
             const update = JSON.parse(data) as { node: string; values: Record<string, unknown> };
             setWorkflowStep((current) => current + 1);
-            setWorkflowMessages((current) => [
-              ...current,
-              makeMessage("assistant", `${workflowNodeLabel(update.node)}已完成`)
-            ]);
+            setWorkflowMessages((current) => [...current, makeMessage("assistant", `${workflowNodeLabel(update.node)}已完成`)]);
           } else if (event === "interrupt") {
             const interrupt = JSON.parse(data) as { clarification?: string };
             setWorkflowMessages((current) => [
@@ -475,17 +670,16 @@ export default function Home() {
     }
   }
 
-  async function resumeWorkflow(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const content = workflowInput.trim();
-    if (!content || workflowRunning) return;
+  async function resumeWorkflow(content: string) {
+    const text = content.trim();
+    if (!text || workflowRunning) return;
     setWorkflowRunning(true);
-    setWorkflowMessages((current) => [...current, makeMessage("user", content)]);
+    setWorkflowMessages((current) => [...current, makeMessage("user", text)]);
     setWorkflowInput("");
     try {
       await streamSse(
         "/graph_resume_sse",
-        { graphName: "ppt_build", userId: user?.name ?? "web", threadId: workflowThreadId, clarificationResponse: content },
+        { graphName: "ppt_build", userId: user?.name ?? "web", threadId: workflowThreadId, clarificationResponse: text },
         token,
         ({ event, data }) => {
           if (event === "done") {
@@ -500,35 +694,45 @@ export default function Home() {
         }
       );
     } catch (err) {
-      setWorkflowMessages((current) => [...current, makeMessage("assistant", err instanceof Error ? err.message : "恢复工作流失败", ["error"])]);
+      setWorkflowMessages((current) => [
+        ...current,
+        makeMessage("assistant", err instanceof Error ? err.message : "恢复工作流失败", ["error"])
+      ]);
     } finally {
       setWorkflowRunning(false);
     }
   }
 
-  async function uploadDocument(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    if (!(form.get("file") instanceof File) || (form.get("file") as File).size === 0) {
+  async function uploadDocument(values: UploadValues) {
+    const file = values.file?.[0]?.originFileObj as File | undefined;
+    if (!file || file.size === 0) {
       messageApi.warning("请先选择要上传的文件");
       return;
     }
+    const form = new FormData();
+    form.set("file", file);
+    form.set("title", values.title || "未命名文档");
+    form.set("description", values.description || "");
+    form.set("knowledge_base_type", values.knowledgeBaseType || "DOCUMENT_SEARCH");
+    form.set("accessible_by", (values.accessibleBy ?? []).join(","));
+    if (values.tableName?.trim()) form.set("table_name", values.tableName.trim());
     try {
       const doc = await uploadDocumentApi(token, form);
       setDocuments((current) => [doc, ...current]);
       setShowUpload(false);
+      messageApi.success("上传成功");
     } catch (err) {
       showError(err, "上传失败");
     }
   }
 
   async function deleteDocument(docId: number) {
-    if (!window.confirm("确定删除这个文档及其切片吗？")) return;
     setBusyDocId(docId);
     try {
       await deleteDocumentApi(token, docId);
       setDocuments((current) => current.filter((doc) => doc.docId !== docId));
       setSelectedDocId(null);
+      messageApi.success("文档已删除");
     } catch (err) {
       showError(err, "删除失败");
     } finally {
@@ -560,7 +764,14 @@ export default function Home() {
     }
   }
 
-  if (!auth) return <>{contextHolder}<LoginView onLogin={handleLogin} /></>;
+  if (!auth) {
+    return (
+      <>
+        {contextHolder}
+        <LoginView onLogin={handleLogin} />
+      </>
+    );
+  }
 
   return (
     <ConfigProvider
@@ -568,117 +779,90 @@ export default function Home() {
         algorithm: antdTheme.defaultAlgorithm,
         token: {
           colorPrimary: "#111827",
-          borderRadius: 8,
+          borderRadius: 10,
           fontFamily:
-            'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+            'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          colorBgTextHover: "#f5f5f5",
+          colorBgTextActive: "#e8e8e8",
+          controlItemBgHover: "#f5f5f5",
+          controlItemBgActive: "#e8e8e8"
         },
         components: {
-          Layout: { bodyBg: "#f5f5f3", headerBg: "#ffffff", siderBg: "#ffffff" },
-          Menu: { itemBorderRadius: 8, itemHeight: 42 }
+          Menu: { itemSelectedBg: "#e8e8e8", itemActiveBg: "#f5f5f5" },
+          Input: { activeBorderColor: "#d9d9d9", hoverBorderColor: "#d9d9d9" }
         }
       }}
     >
-      {contextHolder}
-      <Layout className="h-screen overflow-hidden bg-[#f5f5f3]">
-        <Sider width={264} className="border-r border-[#e8e8e4]" theme="light">
-          <div className="flex h-full flex-col">
-          <div className="flex h-16 items-center gap-3 border-b border-[#ececea] px-4">
-            <Avatar shape="square" size={36} className="bg-[#111827]" icon={<Sparkles className="h-4 w-4" />} />
-            <div className="min-w-0">
-              <Typography.Text strong className="block leading-5">Know-Agent</Typography.Text>
-              <Typography.Text type="secondary" className="block text-xs">智能体工作台</Typography.Text>
+      <XProvider>
+        {contextHolder}
+        <div className={styles.layout}>
+          {/* 侧栏：logo + 菜单 + 会话列表 + 用户信息（套用 ultramodern side 样式） */}
+          <div className={styles.side}>
+            <div className={styles.logo}>
+              <Avatar shape="square" size={32} className="!bg-[#111827]" icon={<Sparkles className="h-4 w-4" />} />
+              <span>Know-Agent</span>
+            </div>
+            <div className={styles.menu}>
+              <Menu
+                mode="inline"
+                selectedKeys={[activeTab]}
+                items={menuItems}
+                onClick={({ key }) => setActiveTab(key as MainTab)}
+              />
+            </div>
+            {(activeTab === "assistant" || activeTab === "workflow") ? (
+              <Conversations
+                className={styles.conversations}
+                items={activeTab === "assistant" ? conversationItems : workflowConversationItems}
+                activeKey={activeTab === "assistant" ? threadId : workflowThreadId}
+                onActiveChange={(key) => (activeTab === "assistant" ? switchThread(key) : switchWorkflowThread(key))}
+                groupable
+                styles={{ item: { padding: "0 8px" } }}
+                creation={{
+                  onClick: () => (activeTab === "assistant" ? createNewThread() : createNewWorkflowThread()),
+                }}
+                menu={(conversation) => ({
+                  items: [
+                    {
+                      label: "删除",
+                      key: "delete",
+                      icon: <Trash2 className="h-3.5 w-3.5" />,
+                      danger: true,
+                      onClick: () => (activeTab === "assistant" ? removeThread(conversation.key as string) : removeWorkflowThread(conversation.key as string))
+                    }
+                  ]
+                })}
+              />
+            ) : null}
+            <div className={styles.sideFooter}>
+              <div className="flex min-w-0 items-center gap-2">
+                <Avatar size="small" icon={<UserRound className="h-4 w-4" />} />
+                <div className="min-w-0">
+                  <Typography.Text strong className="block truncate text-sm leading-4">{user?.name}</Typography.Text>
+                  <Typography.Text type="secondary" className="block truncate text-xs">{user?.roles.join(", ") || "无角色"}</Typography.Text>
+                </div>
+              </div>
+              <Popconfirm title="退出登录" description="确定退出当前账号？" okText="退出" cancelText="取消" onConfirm={handleLogout}>
+                <Button type="text" size="small" icon={<LogOut className="h-4 w-4" />} aria-label="退出登录" />
+              </Popconfirm>
             </div>
           </div>
-          <Menu
-            className="border-none px-2 py-3"
-            mode="inline"
-            selectedKeys={[activeTab]}
-            items={menuItems}
-            onClick={({ key }) => setActiveTab(key as MainTab)}
-          />
-          {activeTab === "assistant" ? (
-            <div className="min-h-0 flex-1 px-3 pb-2">
-              <div className="mb-1 flex items-center justify-between px-2">
-                <Typography.Text type="secondary" className="text-xs">会话</Typography.Text>
-                <Button type="text" size="small" icon={<Plus className="h-3.5 w-3.5" />} onClick={createNewThread}>新建</Button>
-              </div>
-              <div className="max-h-[calc(100vh-310px)] overflow-y-auto pr-1">
-                {threadGroups.map((group) => (
-                  <div key={group.label} className="mb-3">
-                    <div className="px-3 pb-1 pt-2 text-xs font-medium text-[#8b8b84]">{group.label}</div>
-                    <div className="grid gap-1">
-                      {group.items.map((t) => (
-                        <div
-                          key={t.thread_id}
-                          className={clsx(
-                            "group flex h-9 items-center gap-1 rounded-lg px-1",
-                            t.thread_id === threadId ? "bg-[#e8eefc]" : "hover:bg-[#f7f7f4]"
-                          )}
-                        >
-                          <Button
-                            type="text"
-                            size="small"
-                            className={clsx(
-                              "min-w-0 flex-1 justify-start px-2 text-left text-sm",
-                              t.thread_id === threadId && "text-[#2563eb]"
-                            )}
-                            onClick={() => switchThread(t.thread_id)}
-                          >
-                            <span className="block truncate">{threadTitle(t)}</span>
-                          </Button>
-                          <Popconfirm
-                            title="删除会话"
-                            description="删除后会清空这条会话历史。"
-                            okText="删除"
-                            cancelText="取消"
-                            okButtonProps={{ danger: true }}
-                            onConfirm={() => removeThread(t.thread_id)}
-                          >
-                            <Button
-                              type="text"
-                              size="small"
-                              className="text-[#b8b8b0] opacity-0 transition-opacity hover:!text-[#8b8b84] group-hover:opacity-100 focus:opacity-100"
-                              icon={<Trash2 className="h-3.5 w-3.5" />}
-                              aria-label="删除会话"
-                              onClick={(event) => event.stopPropagation()}
-                            />
-                          </Popconfirm>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          <div className="mt-auto border-t border-[#ececea] p-3">
-            <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-              <Avatar icon={<UserRound className="h-4 w-4" />} />
-              <div className="min-w-0 flex-1">
-                <Typography.Text strong className="block truncate text-sm">{user?.name}</Typography.Text>
-                <Typography.Text type="secondary" className="block truncate text-xs">{user?.roles.join(", ") || "无角色"}</Typography.Text>
-              </div>
-              <Button type="text" size="small" icon={<LogOut className="h-4 w-4" />} onClick={handleLogout} aria-label="退出登录" />
-            </div>
-          </div>
-          </div>
-        </Sider>
-        <Layout className="min-w-0">
-          <Header className="flex h-16 items-center justify-between border-b border-[#ececea] px-5">
-            <div className="min-w-0">
-              <Typography.Title level={5} className="!mb-0 truncate">{activeTitle}</Typography.Title>
-              <Typography.Text type="secondary" className="block truncate text-xs">
-                {activeTab === "assistant" && "智能体对话"}
-                {activeTab === "workflow" && "PPT 生成"}
-                {activeTab === "knowledge" && "文档、切片和向量化管理"}
-              </Typography.Text>
-            </div>
-          </Header>
-          <Content className="min-h-0 overflow-hidden">
-            {activeTab === "assistant" && (
-              <AssistantView input={input} messages={messages} streaming={streaming} setInput={setInput} sendMessage={sendMessage} pendingApproval={pendingApproval} onApprove={() => approveTool("APPROVED")} onReject={() => approveTool("REJECTED")} onCopyMessage={copyMessage} />
-            )}
-            {activeTab === "workflow" && (
+
+          {/* 主区：助理用 ultramodern chat 样式；其他 tab 用 header + content */}
+          <div className={styles.chat}>
+            {activeTab === "assistant" ? (
+              <AssistantView
+                input={input}
+                messages={messages}
+                streaming={streaming}
+                setInput={setInput}
+                sendMessage={sendMessage}
+                pendingApproval={pendingApproval}
+                onApprove={() => approveTool("APPROVED")}
+                onReject={() => approveTool("REJECTED")}
+                onCopyMessage={copyMessage}
+              />
+            ) : activeTab === "workflow" ? (
               <WorkflowView
                 workflowSession={workflowSession}
                 workflowMessages={workflowMessages}
@@ -692,50 +876,57 @@ export default function Home() {
                 onCopyMessage={copyMessage}
                 backToWorkflowHome={() => setWorkflowSession(false)}
               />
+            ) : (
+              <div className={styles.contentWrap}>
+                <div className={styles.header}>
+                  <Typography.Title level={5} className="!mb-0">{activeTitle}</Typography.Title>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <KnowledgeView
+                    documents={documents}
+                    segments={segments}
+                    roles={roles}
+                    selectedDocId={selectedDocId}
+                    showUpload={showUpload}
+                    docSearch={docSearch}
+                    statusFilter={statusFilter}
+                    page={page}
+                    loadingDocs={loadingDocs}
+                    busyDocId={busyDocId}
+                    setSelectedDocId={setSelectedDocId}
+                    selectDocument={selectDocument}
+                    setShowUpload={setShowUpload}
+                    setDocSearch={setDocSearch}
+                    setStatusFilter={setStatusFilter}
+                    setPage={setPage}
+                    uploadDocument={uploadDocument}
+                    deleteDocument={deleteDocument}
+                    updateDocumentStatus={updateDocumentStatus}
+                    refreshDocuments={refreshDocuments}
+                  />
+                </div>
+              </div>
             )}
-            {activeTab === "knowledge" && (
-              <KnowledgeView
-                documents={documents}
-                segments={segments}
-                roles={roles}
-                selectedDocId={selectedDocId}
-                showUpload={showUpload}
-                docSearch={docSearch}
-                statusFilter={statusFilter}
-                page={page}
-                loadingDocs={loadingDocs}
-                busyDocId={busyDocId}
-                setSelectedDocId={setSelectedDocId}
-                selectDocument={selectDocument}
-                setShowUpload={setShowUpload}
-                setDocSearch={setDocSearch}
-                setStatusFilter={setStatusFilter}
-                setPage={setPage}
-                uploadDocument={uploadDocument}
-                deleteDocument={deleteDocument}
-                updateDocumentStatus={updateDocumentStatus}
-                refreshDocuments={refreshDocuments}
-              />
-            )}
-          </Content>
-        </Layout>
-      </Layout>
+          </div>
+        </div>
+      </XProvider>
     </ConfigProvider>
   );
 }
-function LoginView({ onLogin }: { onLogin: (event: FormEvent<HTMLFormElement>) => void }) {
+
+function LoginView({ onLogin }: { onLogin: (event: React.FormEvent<HTMLFormElement>) => void }) {
   return (
     <ConfigProvider
       theme={{
         token: {
           colorPrimary: "#111827",
-          borderRadius: 8,
+          borderRadius: 10,
           fontFamily:
             'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
         }
       }}
     >
-      <main className="grid min-h-screen bg-[#f5f5f3] text-[#111827] lg:grid-cols-[minmax(0,1fr)_420px]">
+      <main className="grid min-h-screen bg-[#f6f7f4] text-[#111827] lg:grid-cols-[minmax(0,1fr)_420px]">
         <section className="flex min-h-[420px] flex-col justify-between border-r border-[#e5e7eb] bg-white p-8">
           <div className="flex items-center gap-3">
             <Avatar shape="square" size={44} className="bg-[#111827]" icon={<Sparkles className="h-5 w-5" />} />
@@ -762,10 +953,10 @@ function LoginView({ onLogin }: { onLogin: (event: FormEvent<HTMLFormElement>) =
             <form onSubmit={onLogin} className="mt-6">
               <div className="grid gap-4">
                 <FormField name="username" label="用户名" defaultValue="lxqq" />
-                <FormField name="password" label="密码" defaultValue="Lxqq0912!" type="password" />
+                <FormField name="password" label="密码" type="password" />
               </div>
               <Button htmlType="submit" type="primary" block size="large" className="mt-5">进入工作台</Button>
-              <Alert className="mt-4" type="success" showIcon message="登录后将保留你的会话和访问权限。" />
+              <Typography.Paragraph type="success" className="!mt-4 !mb-0">登录后将保留你的会话和访问权限。</Typography.Paragraph>
             </form>
           </Card>
         </section>
@@ -773,134 +964,235 @@ function LoginView({ onLogin }: { onLogin: (event: FormEvent<HTMLFormElement>) =
     </ConfigProvider>
   );
 }
-function AssistantView({ input, messages, streaming, setInput, sendMessage, pendingApproval, onApprove, onReject, onCopyMessage }: { input: string; messages: ChatMessage[]; streaming: boolean; setInput: (value: string) => void; sendMessage: (event: FormEvent<HTMLFormElement>) => void; pendingApproval: { action_requests: { name: string; args: Record<string, unknown> }[] } | null; onApprove: () => void; onReject: () => void; onCopyMessage: (content: string) => void }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, streaming, pendingApproval]);
+
+// 助理对话区：直接套用 ultramodern 的 chat 结构（Bubble.List + XMarkdown + Sender footer + agentName 空状态）
+function AssistantView({
+  input,
+  messages,
+  streaming,
+  setInput,
+  sendMessage,
+  pendingApproval,
+  onApprove,
+  onReject,
+  onCopyMessage
+}: {
+  input: string;
+  messages: ChatMessage[];
+  streaming: boolean;
+  setInput: (value: string) => void;
+  sendMessage: (content: string) => void;
+  pendingApproval: { action_requests: { name: string; args: Record<string, unknown> }[] } | null;
+  onApprove: () => void;
+  onReject: () => void;
+  onCopyMessage: (content: string) => void;
+}) {
+  const { styles } = useStyle();
+  const [deepThink, setDeepThink] = useState(true);
+
+  const roles: BubbleListProps["role"] = {
+    user: { placement: "end" },
+    assistant: {
+      placement: "start",
+      contentRender: (content: string) => (
+        <XMarkdown streaming={{ enableAnimation: true }}>{content}</XMarkdown>
+      ),
+      footer: (content: string) =>
+        content ? (
+          <Button
+            type="text"
+            size="small"
+            className="!text-[#9a9a92]"
+            icon={<Copy className="h-3.5 w-3.5" />}
+            onClick={() => onCopyMessage(content)}
+          />
+        ) : null
+    },
+    tool: {
+      placement: "start",
+      contentRender: (content: string) => (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-800">
+          {content}
+        </div>
+      )
+    }
+  };
+
+  const bubbleItems = messages.map((message) => ({
+    key: message.id,
+    content: message.content,
+    role: message.role,
+    loading: message.role === "assistant" && !message.content && message.sources?.includes("loading")
+  }));
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f7f7f4]">
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5">
-        <div className="mx-auto grid max-w-3xl gap-5 pb-4">
-          {!messages.length && !streaming ? (
-            <div className="grid min-h-[45vh] place-items-center text-center">
-              <div>
-                <Typography.Title level={3} className="!mb-2">可以开始提问了</Typography.Title>
-                <Typography.Text type="secondary">输入问题后，助手会在这里显示回答。</Typography.Text>
-              </div>
-            </div>
-          ) : null}
-          {messages.map((message) => <ChatMessageRow key={message.id} message={message} onCopy={onCopyMessage} />)}
-          {pendingApproval ? (
-            <Card size="small" className="mx-auto max-w-3xl border-[#f0d98c] bg-[#fffbe6]">
-              <Typography.Text strong className="text-[#7a5c00]">工具审批</Typography.Text>
-              <div className="mt-2 space-y-1">
-                {pendingApproval.action_requests.map((r, i) => (
-                  <Tag key={i} color="gold">{r.name}</Tag>
-                ))}
-              </div>
-              <Space className="mt-3">
-                <Button type="primary" size="small" onClick={onApprove} disabled={streaming}>批准执行</Button>
-                <Button danger size="small" onClick={onReject} disabled={streaming}>拒绝</Button>
-              </Space>
-            </Card>
-          ) : null}
-        </div>
-      </div>
-      <form onSubmit={sendMessage} className="shrink-0 bg-[#f7f7f4] px-4 pb-5 pt-2">
-        <div className="mx-auto max-w-3xl rounded-[22px] border border-[#d9d9d2] bg-white p-2 shadow-[0_12px_40px_rgba(15,23,42,0.10)] transition focus-within:border-[#b8b8b0] focus-within:shadow-[0_12px_40px_rgba(15,23,42,0.12)]">
-          <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }
-            }}
-            placeholder="Message Know-Agent"
-            rows={1}
-            className="max-h-40 min-h-12 w-full resize-none bg-transparent px-3 py-3 text-[15px] leading-6 text-[#20201d] outline-none placeholder:text-[#8a8a82]"
+    <>
+      <div className={styles.chatList}>
+        {messages.length > 0 && (
+          <Bubble.List
+            items={bubbleItems}
+            role={roles}
+            styles={{ root: { maxWidth: 940, margin: "0 auto", marginBlockEnd: 24 } }}
           />
-          <div className="flex items-center justify-between px-1 pb-1">
-            <span className="rounded-full border border-[#e6e6df] px-2 py-1 text-xs text-[#8a8a82]">Shift + Enter 换行</span>
-            <button disabled={!input.trim() || streaming} className="grid h-9 w-9 place-items-center rounded-full bg-[#0d0d0d] text-white transition hover:bg-black disabled:bg-[#d7d7d0] disabled:text-[#8a8a82]" aria-label="发送">
-              {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
-      </form>
-    </div>
+        )}
+        {pendingApproval ? (
+          <Card size="small" className="mx-auto mt-3 max-w-[940px] border-[#f0d98c] bg-[#fffbe6]">
+            <Typography.Text strong className="text-[#7a5c00]">工具审批</Typography.Text>
+            <div className="mt-2 space-y-1">
+              {pendingApproval.action_requests.map((r, i) => (
+                <Tag key={i} color="gold">{r.name}</Tag>
+              ))}
+            </div>
+            <Space className="mt-3">
+              <Button type="primary" size="small" onClick={onApprove} disabled={streaming}>批准执行</Button>
+              <Button danger size="small" onClick={onReject} disabled={streaming}>拒绝</Button>
+            </Space>
+          </Card>
+        ) : null}
+      </div>
+      <div className={clsx(styles.chatSender, { [styles.startPage]: messages.length === 0 })}>
+        {messages.length === 0 && <div className={styles.agentName}>Know-Agent</div>}
+        <Sender
+          suffix={false}
+          value={input}
+          onChange={setInput}
+          loading={streaming}
+          onSubmit={(val) => sendMessage(val)}
+          placeholder="Message Know-Agent"
+          autoSize={{ minRows: 3, maxRows: 6 }}
+          footer={(actionNode) => (
+            <Flex justify="space-between" align="center">
+              <Flex gap="small" align="center">
+                <Sender.Switch
+                  value={deepThink}
+                  onChange={(checked: boolean) => setDeepThink(checked)}
+                  icon={<Sparkles className="h-4 w-4" />}
+                >
+                  深度思考
+                </Sender.Switch>
+              </Flex>
+              <Flex align="center">{actionNode}</Flex>
+            </Flex>
+          )}
+        />
+      </div>
+    </>
   );
 }
 
-function WorkflowView({ workflowSession, workflowMessages, workflowInput, workflowRunning, workflowStep, setWorkflowInput, startWorkflowSession, runWorkflow, resumeWorkflow, onCopyMessage, backToWorkflowHome }: { workflowSession: boolean; workflowMessages: ChatMessage[]; workflowInput: string; workflowRunning: boolean; workflowStep: number; setWorkflowInput: (value: string) => void; startWorkflowSession: () => void; runWorkflow: (event?: FormEvent<HTMLFormElement>) => void; resumeWorkflow: (event: FormEvent<HTMLFormElement>) => void; onCopyMessage: (content: string) => void; backToWorkflowHome: () => void }) {
-  const workflowScrollRef = useRef<HTMLDivElement>(null);
+function WorkflowView({
+  workflowSession,
+  workflowMessages,
+  workflowInput,
+  workflowRunning,
+  workflowStep,
+  setWorkflowInput,
+  startWorkflowSession,
+  runWorkflow,
+  resumeWorkflow,
+  backToWorkflowHome
+}: {
+  workflowSession: boolean;
+  workflowMessages: ChatMessage[];
+  workflowInput: string;
+  workflowRunning: boolean;
+  workflowStep: number;
+  setWorkflowInput: (value: string) => void;
+  startWorkflowSession: () => void;
+  runWorkflow: (content: string) => void;
+  resumeWorkflow: (content: string) => void;
+  onCopyMessage: (content: string) => void;
+  backToWorkflowHome: () => void;
+}) {
+  const { styles } = useStyle();
+  const chatListRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    workflowScrollRef.current?.scrollTo({ top: workflowScrollRef.current.scrollHeight, behavior: "smooth" });
+    chatListRef.current?.scrollTo({ top: chatListRef.current.scrollHeight, behavior: "smooth" });
   }, [workflowMessages, workflowRunning]);
+
+  const roles: BubbleListProps["role"] = {
+    user: { placement: "end" },
+    assistant: { placement: "start", contentRender: (content: string) => <XMarkdown streaming={{ enableAnimation: true }}>{content}</XMarkdown> },
+    tool: { placement: "start" }
+  };
+  const bubbleItems = workflowMessages.map((message) => ({
+    key: message.id,
+    content: message.content,
+    role: message.role,
+    loading: message.role === "assistant" && !message.content && message.sources?.includes("loading")
+  }));
 
   if (!workflowSession) {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        <div className="mb-5">
-          <h3 className="text-xl font-semibold">PPT 生成工作流</h3>
-          <p className="mt-1 text-sm text-[#6f6f68]">输入主题、受众和页数，系统会整理材料并生成 PPT。</p>
-        </div>
-        <article className="max-w-lg rounded-lg border border-[#deded8] bg-white p-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#f0f0eb]">
-              <Presentation className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
-                <h4 className="text-sm font-semibold text-[#20201d]">PPT 生成</h4>
-                <ToolPill>演示文稿</ToolPill>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-[#66665f]">根据主题、受众和页数生成 PPT：需求澄清、资料检索、模板选择、提纲、Schema 和渲染。</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="rounded-full bg-[#f0f0eb] px-2 py-1 text-xs text-[#6f6f68]">8 个节点</span>
-                <span className="rounded-full bg-[#f0f0eb] px-2 py-1 text-xs text-[#6f6f68]">支持中断补充</span>
-                <span className="rounded-full bg-[#f0f0eb] px-2 py-1 text-xs text-[#6f6f68]">实时进度</span>
-              </div>
-            </div>
+      <div ref={chatListRef} className={styles.chatList}>
+        <div className="mx-auto max-w-3xl px-4 py-5">
+          <div className="mb-5">
+            <Typography.Title level={4} className="!mb-1">PPT 生成工作流</Typography.Title>
+            <Typography.Text type="secondary">输入主题、受众和页数，系统会整理材料并生成 PPT。</Typography.Text>
           </div>
-          <button onClick={startWorkflowSession} className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-[#0d0d0d] px-3 text-sm font-semibold text-white transition hover:bg-black">
-            <Play className="h-4 w-4" /> 启动工作流
-          </button>
-        </article>
+          <Card>
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#f0f0eb]">
+                <Presentation className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <Typography.Text strong>PPT 生成</Typography.Text>
+                  <ToolPill>演示文稿</ToolPill>
+                </div>
+                <Typography.Paragraph className="!mt-2 !mb-0 text-sm leading-6 text-[#66665f]">
+                  根据主题、受众和页数生成 PPT：需求澄清、资料检索、模板选择、提纲、Schema 和渲染。
+                </Typography.Paragraph>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Tag>8 个节点</Tag>
+                  <Tag>支持中断补充</Tag>
+                  <Tag>实时进度</Tag>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button type="primary" icon={<Play className="h-4 w-4" />} onClick={startWorkflowSession}>启动工作流</Button>
+            </div>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between border-b border-[#e7e7e1] p-4">
-        <button onClick={backToWorkflowHome} className="text-sm font-semibold text-[#5f5f5a] hover:text-[#0d0d0d]">返回工作流</button>
-        <ToolPill>已完成节点 {workflowStep}</ToolPill>
-      </div>
-      <div ref={workflowScrollRef} className="min-h-0 flex-1 overflow-y-auto p-5">
-        <div className="mx-auto grid max-w-4xl gap-4">
+    <>
+      <div ref={chatListRef} className={styles.chatList}>
+        <div className="mx-auto max-w-3xl px-4">
+          <div className="flex items-center justify-between py-3">
+            <Button type="link" className="!px-0" onClick={backToWorkflowHome}>← 返回</Button>
+            <ToolPill>已完成节点 {workflowStep}</ToolPill>
+          </div>
           {!workflowMessages.length && !workflowRunning ? (
-            <div className="grid min-h-[45vh] place-items-center text-center">
+            <div className="grid min-h-[40vh] place-items-center text-center">
               <div>
                 <Typography.Title level={3} className="!mb-2">描述你要生成的 PPT</Typography.Title>
                 <Typography.Text type="secondary">例如主题、受众、页数、风格和需要强调的内容。</Typography.Text>
               </div>
             </div>
           ) : null}
-          {workflowMessages.map((message) => <ChatMessageRow key={message.id} message={message} onCopy={onCopyMessage} />)}
-          {workflowRunning ? <div className="flex items-center gap-2 text-sm text-[#77776f]"><Loader2 className="h-4 w-4 animate-spin" /> 工作流运行中</div> : null}
+          {bubbleItems.length > 0 && (
+            <Bubble.List items={bubbleItems} role={roles} styles={{ root: { maxWidth: 940, margin: "0 auto", marginBlockEnd: 24 } }} />
+          )}
         </div>
       </div>
-      <form onSubmit={workflowMessages.length ? resumeWorkflow : runWorkflow} className="border-t border-[#e7e7e1] bg-[#fbfbf8] p-4">
-        <div className="mx-auto flex max-w-4xl items-center gap-2 rounded-xl border border-[#deded8] bg-white p-2">
-          <input value={workflowInput} onChange={(event) => setWorkflowInput(event.target.value)} placeholder={workflowMessages.length ? "补充说明，例如受众、页数或风格" : "输入 PPT 需求，例如：做一份关于 AI 发展的 10 页技术团队汇报"} className="h-10 flex-1 bg-transparent px-3 text-sm outline-none" />
-          <button disabled={!workflowInput.trim() || workflowRunning} className="h-10 rounded-lg bg-[#0d0d0d] px-4 text-sm font-semibold text-white disabled:opacity-40">{workflowMessages.length ? "继续" : "发送"}</button>
-        </div>
-      </form>
-    </div>
+      <div className={clsx(styles.chatSender, { [styles.startPage]: !workflowMessages.length })}>
+        {!workflowMessages.length && <div className={styles.agentName}>PPT 生成</div>}
+        <Sender
+          suffix={false}
+          value={workflowInput}
+          onChange={setWorkflowInput}
+          loading={workflowRunning}
+          onSubmit={(val) => (workflowMessages.length ? resumeWorkflow(val) : runWorkflow(val))}
+          placeholder={workflowMessages.length ? "补充说明，例如受众、页数或风格" : "输入 PPT 需求，例如：做一份关于 AI 发展的 10 页技术团队汇报"}
+          autoSize={{ minRows: 3, maxRows: 6 }}
+        />
+      </div>
+    </>
   );
 }
 
@@ -917,7 +1209,49 @@ function workflowNodeLabel(node: string) {
   return labels[node] ?? node;
 }
 
-function KnowledgeView({ documents, segments, roles, selectedDocId, showUpload, docSearch, statusFilter, loadingDocs, busyDocId, selectDocument, setSelectedDocId, setShowUpload, setDocSearch, setStatusFilter, uploadDocument, deleteDocument, updateDocumentStatus, refreshDocuments }: { documents: DocumentItem[]; segments: SegmentItem[]; roles: RoleItem[]; selectedDocId: number | null; showUpload: boolean; docSearch: string; statusFilter: "ALL" | DocumentStatus; page: number; loadingDocs: boolean; busyDocId: number | null; setSelectedDocId: (value: number | null) => void; selectDocument: (docId: number) => void; setShowUpload: (value: boolean) => void; setDocSearch: (value: string) => void; setStatusFilter: (value: "ALL" | DocumentStatus) => void; setPage: (value: number) => void; uploadDocument: (event: FormEvent<HTMLFormElement>) => void; deleteDocument: (docId: number) => void; updateDocumentStatus: (docId: number, status: DocumentStatus) => void; refreshDocuments: () => void }) {
+function KnowledgeView({
+  documents,
+  segments,
+  roles,
+  selectedDocId,
+  showUpload,
+  docSearch,
+  statusFilter,
+  page,
+  loadingDocs,
+  busyDocId,
+  setSelectedDocId,
+  selectDocument,
+  setShowUpload,
+  setDocSearch,
+  setStatusFilter,
+  setPage,
+  uploadDocument,
+  deleteDocument,
+  updateDocumentStatus,
+  refreshDocuments
+}: {
+  documents: DocumentItem[];
+  segments: SegmentItem[];
+  roles: RoleItem[];
+  selectedDocId: number | null;
+  showUpload: boolean;
+  docSearch: string;
+  statusFilter: "ALL" | DocumentStatus;
+  page: number;
+  loadingDocs: boolean;
+  busyDocId: number | null;
+  setSelectedDocId: (value: number | null) => void;
+  selectDocument: (docId: number) => void;
+  setShowUpload: (value: boolean) => void;
+  setDocSearch: (value: string) => void;
+  setStatusFilter: (value: "ALL" | DocumentStatus) => void;
+  setPage: (value: number) => void;
+  uploadDocument: (values: UploadValues) => void;
+  deleteDocument: (docId: number) => void;
+  updateDocumentStatus: (docId: number, status: DocumentStatus) => void;
+  refreshDocuments: () => void;
+}) {
   const selectedDoc = documents.find((doc) => doc.docId === selectedDocId) ?? null;
   const filteredDocs = documents.filter((doc) => {
     const keyword = docSearch.trim().toLowerCase();
@@ -951,7 +1285,7 @@ function KnowledgeView({ documents, segments, roles, selectedDocId, showUpload, 
         </Button>
       </div>
 
-      <Card className="min-h-0 flex-1 overflow-hidden" bodyStyle={{ padding: 0, height: "100%" }}>
+      <Card className="min-h-0 flex-1 overflow-hidden" styles={{ body: { padding: 0, height: "100%" } }}>
         <div className="flex flex-col gap-3 border-b border-[#f0f0f0] p-4 xl:flex-row xl:items-center xl:justify-between">
           <Input.Search
             allowClear
@@ -991,7 +1325,7 @@ function KnowledgeView({ documents, segments, roles, selectedDocId, showUpload, 
               dataIndex: "docTitle",
               width: 260,
               render: (text: string, doc: DocumentItem) => (
-                <button className="text-left font-semibold text-[#111827] hover:underline" onClick={() => selectDocument(doc.docId)}>{text}</button>
+                <Button type="link" className="!px-0 !text-[#111827]" onClick={() => selectDocument(doc.docId)}>{text}</Button>
               )
             },
             { title: "类型", dataIndex: "knowledgeBaseType", width: 160, render: (value: string) => <Tag>{value}</Tag> },
@@ -1002,11 +1336,20 @@ function KnowledgeView({ documents, segments, roles, selectedDocId, showUpload, 
               title: "操作",
               key: "actions",
               fixed: "right",
-              width: 150,
+              width: 180,
               render: (_: unknown, doc: DocumentItem) => (
                 <Space size="small">
                   <Button size="small" icon={<Eye className="h-3.5 w-3.5" />} onClick={() => selectDocument(doc.docId)}>查看</Button>
-                  <Button size="small" danger loading={busyDocId === doc.docId} onClick={() => deleteDocument(doc.docId)}>删除</Button>
+                  <Popconfirm
+                    title="删除文档"
+                    description="删除文档及其所有切片，不可恢复。"
+                    okText="删除"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => deleteDocument(doc.docId)}
+                  >
+                    <Button size="small" danger loading={busyDocId === doc.docId}>删除</Button>
+                  </Popconfirm>
                 </Space>
               )
             }
@@ -1018,36 +1361,66 @@ function KnowledgeView({ documents, segments, roles, selectedDocId, showUpload, 
   );
 }
 
-function DocumentDetail({ doc, segments, busy, onBack, onDelete, onUpdateStatus }: { doc: DocumentItem; segments: SegmentItem[]; busy: boolean; onBack: () => void; onDelete: () => void; onUpdateStatus: (status: DocumentStatus) => void }) {
-  const visibleLifecycle = documentLifecycle.filter((item) => doc.knowledgeBaseType === "DATA_QUERY" ? item.status !== "VECTOR_STORED" : item.status !== "STORED");
+function DocumentDetail({
+  doc,
+  segments,
+  busy,
+  onBack,
+  onDelete,
+  onUpdateStatus
+}: {
+  doc: DocumentItem;
+  segments: SegmentItem[];
+  busy: boolean;
+  onBack: () => void;
+  onDelete: () => void;
+  onUpdateStatus: (status: DocumentStatus) => void;
+}) {
+  const visibleLifecycle = documentLifecycle.filter((item) =>
+    doc.knowledgeBaseType === "DATA_QUERY" ? item.status !== "VECTOR_STORED" : item.status !== "STORED"
+  );
   const lifecycleIndex = Math.max(0, visibleLifecycle.findIndex((item) => item.status === doc.status));
-  const nextActions = doc.status === "CONVERTED" ? [{ label: "执行分块", status: "CHUNKED" as const }] : doc.status === "CHUNKED" ? [{ label: "执行向量化", status: "VECTOR_STORED" as const }] : [];
+  const nextActions =
+    doc.status === "CONVERTED"
+      ? [{ label: "执行分块", status: "CHUNKED" as const }]
+      : doc.status === "CHUNKED"
+        ? [{ label: "执行向量化", status: "VECTOR_STORED" as const }]
+        : [];
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-5">
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <Button type="link" className="mb-1 px-0" onClick={onBack}>返回文档列表</Button>
+          <Button type="link" className="!mb-1 !px-0" onClick={onBack}>返回文档列表</Button>
           <Typography.Title level={4} className="!mb-1">{doc.docTitle}</Typography.Title>
           <Typography.Text type="secondary">{doc.description || "暂无描述"}</Typography.Text>
         </div>
         <Space wrap>
-          {nextActions.map((item) => <Button key={item.label} type="primary" loading={busy} onClick={() => onUpdateStatus(item.status)}>{item.label}</Button>)}
-          <Button danger loading={busy} onClick={onDelete}>删除</Button>
+          {nextActions.map((item) => (
+            <Button key={item.label} type="primary" loading={busy} onClick={() => onUpdateStatus(item.status)}>{item.label}</Button>
+          ))}
+          <Popconfirm title="删除文档" description="删除文档及其所有切片，不可恢复。" okText="删除" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={onDelete}>
+            <Button danger loading={busy}>删除</Button>
+          </Popconfirm>
         </Space>
       </div>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <Card title="基本信息">
-          <Descriptions column={2} size="small" bordered items={[
-            { key: "id", label: "文档 ID", children: doc.docId },
-            { key: "user", label: "上传人", children: doc.uploadUser },
-            { key: "type", label: "知识库类型", children: <Tag>{doc.knowledgeBaseType}</Tag> },
-            { key: "roles", label: "可访问角色", children: doc.accessibleBy },
-            { key: "created", label: "创建时间", children: doc.createdAt },
-            { key: "updated", label: "更新时间", children: doc.updatedAt },
-            { key: "status", label: "当前状态", children: <StatusBadge status={doc.status} /> },
-            { key: "segments", label: "切片数量", children: segments.length }
-          ]} />
+          <Descriptions
+            column={2}
+            size="small"
+            bordered
+            items={[
+              { key: "id", label: "文档 ID", children: doc.docId },
+              { key: "user", label: "上传人", children: doc.uploadUser },
+              { key: "type", label: "知识库类型", children: <Tag>{doc.knowledgeBaseType}</Tag> },
+              { key: "roles", label: "可访问角色", children: doc.accessibleBy },
+              { key: "created", label: "创建时间", children: doc.createdAt },
+              { key: "updated", label: "更新时间", children: doc.updatedAt },
+              { key: "status", label: "当前状态", children: <StatusBadge status={doc.status} /> },
+              { key: "segments", label: "切片数量", children: segments.length }
+            ]}
+          />
         </Card>
         <Card title="处理流程">
           <Steps
@@ -1078,123 +1451,132 @@ function DocumentDetail({ doc, segments, busy, onBack, onDelete, onUpdateStatus 
   );
 }
 
-function UploadDialog({ roles, onClose, onSubmit }: { roles: RoleItem[]; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function UploadDialog({
+  roles,
+  onClose,
+  onSubmit
+}: {
+  roles: RoleItem[];
+  onClose: () => void;
+  onSubmit: (values: UploadValues) => Promise<void> | void;
+}) {
+  const [form] = Form.useForm<UploadValues>();
+  const [submitting, setSubmitting] = useState(false);
+  const knowledgeBaseType = Form.useWatch("knowledgeBaseType", form);
+  const handleFinish = async (values: UploadValues) => {
+    setSubmitting(true);
+    try {
+      await onSubmit(values);
+    } finally {
+      setSubmitting(false);
+    }
+  };
   return (
-    <Modal open title="上传文档" onCancel={onClose} footer={null} destroyOnClose width={620}>
+    <Modal
+      open
+      title="上传文档"
+      onCancel={onClose}
+      footer={null}
+      destroyOnClose
+      width={680}
+      closable={!submitting}
+      maskClosable={!submitting}
+    >
       <Typography.Paragraph type="secondary">上传后会自动解析，并进入知识库处理流程。</Typography.Paragraph>
-      <form onSubmit={onSubmit} className="mt-4">
-        <div className="grid gap-4">
-          <FormField name="title" label="文档标题" defaultValue="新文档" />
-          <FormField name="uploadUser" label="上传人" defaultValue="web" />
-          <FormField name="description" label="描述" defaultValue="" />
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium text-[#4b5563]">知识库类型</span>
-            <select name="knowledgeBaseType" defaultValue="DOCUMENT_SEARCH" className="h-10 rounded-lg border border-[#d9d9d9] bg-white px-3 text-sm outline-none">
-              <option value="DOCUMENT_SEARCH">文档检索</option>
-              <option value="DATA_QUERY">数据查询</option>
-            </select>
-          </label>
-          <FormField name="tableName" label="表名（DATA_QUERY 可选）" defaultValue="" />
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium text-[#4b5563]">可访问角色</span>
-            <select name="accessibleBy" multiple className="min-h-24 rounded-lg border border-[#d9d9d9] bg-white px-3 py-2 text-sm outline-none">
-              {roles.map((role) => <option key={role.name} value={role.name}>{role.displayName || role.name}</option>)}
-            </select>
-            <Typography.Text type="secondary" className="text-xs">不选择则按公开文档处理。</Typography.Text>
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-sm font-medium text-[#4b5563]">文件</span>
-            <input name="file" type="file" required className="rounded-lg border border-dashed border-[#d9d9d9] bg-white px-3 py-3 text-sm" />
-          </label>
+      <Form
+        form={form}
+        layout="vertical"
+        className="mt-4"
+        onFinish={handleFinish}
+        initialValues={{
+          title: "",
+          description: "",
+          knowledgeBaseType: "DOCUMENT_SEARCH",
+          tableName: "",
+          accessibleBy: []
+        }}
+      >
+        <Form.Item
+          name="file"
+          label="文件"
+          valuePropName="fileList"
+          getValueFromEvent={(e: unknown) => (Array.isArray(e) ? e : (e as { fileList?: unknown })?.fileList)}
+          rules={[{ required: true, message: "请选择文件" }]}
+        >
+          <Upload.Dragger
+            beforeUpload={() => false}
+            maxCount={1}
+            onChange={(info) => {
+              const f = info.fileList[0]?.originFileObj as File | undefined;
+              if (f) {
+                const name = f.name.replace(/\.[^.]+$/, "");
+                form.setFieldsValue({ title: name, description: name });
+              }
+            }}
+          >
+            <p className="ant-upload-drag-icon">
+              <UploadCloud className="mx-auto h-8 w-8 text-[#8b8b84]" />
+            </p>
+            <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+            <p className="ant-upload-hint">支持 PDF / Word / Excel / CSV / TXT / Markdown</p>
+          </Upload.Dragger>
+        </Form.Item>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item name="title" label="文档标题" rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="description" label="描述">
+              <Input />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="knowledgeBaseType" label="知识库类型" rules={[{ required: true }]}>
+              <Select
+                options={[
+                  { value: "DOCUMENT_SEARCH", label: "文档检索" },
+                  { value: "DATA_QUERY", label: "数据查询" }
+                ]}
+              />
+            </Form.Item>
+          </Col>
+          {knowledgeBaseType === "DATA_QUERY" && (
+            <Col span={12}>
+              <Form.Item name="tableName" label="表名">
+                <Input />
+              </Form.Item>
+            </Col>
+          )}
+          <Col span={24}>
+            <Form.Item name="accessibleBy" label="可访问角色" extra="不选择则按公开文档处理。">
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder="选择可访问的角色"
+                options={roles.map((role) => ({ value: role.name, label: role.displayName || role.name }))}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
+        <div className="mt-2 flex justify-end gap-2">
+          <Button onClick={onClose} disabled={submitting}>取消</Button>
+          <Button htmlType="submit" type="primary" loading={submitting} disabled={submitting}>上传</Button>
         </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button type="default" onClick={onClose}>取消</Button>
-          <Button htmlType="submit" type="primary">上传</Button>
-        </div>
-      </form>
+      </Form>
     </Modal>
   );
 }
 
-function ChatMessageRow({ message, onCopy }: { message: ChatMessage; onCopy: (content: string) => void }) {
-  const isUser = message.role === "user";
-  const isTool = message.role === "tool";
-  const isLoading = message.role === "assistant" && !message.content && message.sources?.includes("loading");
-  return (
-    <div className={clsx("group/message flex", isUser && "justify-end")}>
-      <div className={clsx("max-w-[min(78%,720px)]", isUser && "flex flex-col items-end")}>
-        <div className={clsx("rounded-2xl px-4 py-3 text-sm leading-6", isUser ? "bg-[#ececec] text-[#20201d]" : isTool ? "border border-[#ead49a] bg-[#fff9e8] text-[#5f4612]" : "text-[#2f2f2b]")}>
-          {isLoading ? (
-            <TypingDots />
-          ) : isUser || isTool ? (
-            <p className="whitespace-pre-wrap">{message.content}</p>
-          ) : message.content ? (
-            <MarkdownMessage content={message.content} />
-          ) : null}
-        </div>
-        {message.content ? (
-          <button
-            type="button"
-            className="mt-1 inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-[#9a9a92] opacity-0 transition hover:bg-[#ecece7] hover:text-[#5f5f58] focus:opacity-100 group-hover/message:opacity-100"
-            onClick={() => onCopy(message.content)}
-            aria-label="复制消息"
-          >
-            <Copy className="h-3.5 w-3.5" />
-            <span>复制</span>
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function TypingDots() {
-  return (
-    <div className="flex h-6 items-center gap-1" aria-label="正在生成">
-      {[0, 1, 2].map((index) => (
-        <span
-          key={index}
-          className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8b8b84]"
-          style={{ animationDelay: `${index * 120}ms` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function MarkdownMessage({ content }: { content: string }) {
-  return (
-    <div className="markdown-body">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: ({ className, ...props }) => (
-            <a className={clsx("font-medium text-[#2563eb] underline underline-offset-2", className)} target="_blank" rel="noreferrer" {...props} />
-          ),
-          code: ({ className, children, ...props }) => {
-            const inline = !className;
-            return inline ? (
-              <code className="rounded-md bg-[#eeeeea] px-1.5 py-0.5 font-mono text-[0.9em]" {...props}>{children}</code>
-            ) : (
-              <code className={className} {...props}>{children}</code>
-            );
-          }
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
-}
-
 function StatusBadge({ status }: { status: DocumentStatus }) {
-  const styles: Record<DocumentStatus, string> = {
-    CONVERTED: "bg-[#eef0ff] text-[#4c5aac]",
-    CHUNKED: "bg-[#fff6df] text-[#8a6417]",
-    VECTOR_STORED: "bg-[#effaf4] text-[#26734d]",
-    STORED: "bg-[#eef7ff] text-[#28628a]"
+  const colors: Record<DocumentStatus, string> = {
+    CONVERTED: "blue",
+    CHUNKED: "gold",
+    VECTOR_STORED: "green",
+    STORED: "cyan"
   };
-  return <span className={clsx("rounded-full px-2 py-1 text-xs font-semibold", styles[status])}>{statusLabel(status)}</span>;
+  return <Tag color={colors[status]}>{statusLabel(status)}</Tag>;
 }
 
 function statusLabel(status: DocumentStatus) {
@@ -1207,19 +1589,33 @@ function statusLabel(status: DocumentStatus) {
   return labels[status] ?? status;
 }
 
-function InfoItem({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-lg bg-[#fbfbf8] p-3"><p className="text-xs font-medium text-[#77776f]">{label}</p><p className="mt-1 break-words text-sm font-semibold">{value}</p></div>;
-}
-
-function FormField({ name, label, defaultValue, type = "text", className }: { name: string; label: string; defaultValue: string; type?: string; className?: string }) {
-  const control = type === "password"
-    ? <Input.Password name={name} defaultValue={defaultValue} size="large" />
-    : <Input name={name} defaultValue={defaultValue} size="large" />;
-  return <label className={clsx("grid gap-1.5", className)}><span className="text-sm font-medium text-[#4b5563]">{label}</span>{control}</label>;
+function FormField({
+  name,
+  label,
+  defaultValue,
+  type = "text"
+}: {
+  name: string;
+  label: string;
+  defaultValue: string;
+  type?: string;
+}) {
+  const control = type === "password" ? <Input.Password name={name} defaultValue={defaultValue} size="large" /> : <Input name={name} defaultValue={defaultValue} size="large" />;
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-sm font-medium text-[#4b5563]">{label}</span>
+      {control}
+    </label>
+  );
 }
 
 function LoginFeature({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
-  return <div className="flex items-center gap-3 rounded-lg border border-[#e5e7eb] bg-white p-3"><Avatar shape="square" className="bg-[#f3f4f6] text-[#111827]" icon={<Icon className="h-4 w-4" />} /><Typography.Text strong>{title}</Typography.Text></div>;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-[#e5e7eb] bg-white p-3">
+      <Avatar shape="square" className="bg-[#f3f4f6] text-[#111827]" icon={<Icon className="h-4 w-4" />} />
+      <Typography.Text strong>{title}</Typography.Text>
+    </div>
+  );
 }
 
 function ToolPill({ children }: { children: React.ReactNode }) {

@@ -33,6 +33,11 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* 去掉 antd Sender 输入框 focus 时的深色阴影框 */
+.ant-sender:focus-within {
+  box-shadow: none !important;
+}
+
 ::selection {
   background: #ccfbf1;
 }
