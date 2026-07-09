@@ -7,6 +7,7 @@ GET  /list-graphs     列出可用 graph
 
 import json
 
+from langchain_core.messages import AIMessage, HumanMessage
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
 
@@ -34,10 +35,11 @@ def _config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
 
 
-async def _stream(graph, inputs, config, last_event_id: int | None = None):
+def _stream(graph, inputs, config, last_event_id: int | None = None):
     """通用流式：yield 节点更新 + interrupt/done，带 id + 缓存支持断线重连.
 
     last_event_id 非 None 时为断线重连：只重放缓存事件，不重新执行 graph。
+    用同步 graph.stream（PostgresSaver 是同步 checkpointer，不支持 astream 的 aget_tuple）。
     """
     thread_id = config["configurable"]["thread_id"]
     # 断线重连：重放缓存事件
@@ -45,8 +47,8 @@ async def _stream(graph, inputs, config, last_event_id: int | None = None):
         for eid, ev in sse_store.get_since(thread_id, last_event_id):
             yield {**ev, "id": str(eid)}
         return
-    # 新流：astream(inputs) 首次运行，astream(None) 从 interrupt 处继续
-    async for output in graph.astream(inputs, config, stream_mode="updates"):
+    # 新流：stream(inputs) 首次运行，stream(None) 从 interrupt 处继续
+    for output in graph.stream(inputs, config, stream_mode="updates"):
         for node, update in output.items():
             event = {
                 "event": "update",
@@ -64,9 +66,12 @@ async def _stream(graph, inputs, config, last_event_id: int | None = None):
             ),
         }
     else:
+        ppt_result = state.values.get("ppt_result", "")
+        # 记录 assistant 回复到 messages，供会话历史拉取
+        graph.update_state(config, {"messages": [AIMessage(content=ppt_result or "工作流已完成")]})
         event = {
             "event": "done",
-            "data": json.dumps({"ppt_result": state.values.get("ppt_result", "")}, ensure_ascii=False),
+            "data": json.dumps({"ppt_result": ppt_result}, ensure_ascii=False),
         }
     eid = sse_store.append(thread_id, event)
     yield {**event, "id": str(eid)}
@@ -90,7 +95,7 @@ async def graph_run_sse(request: Request, req: GraphRunRequest):
         inputs = req.inputs
     else:
         content = req.newMessage.content if req.newMessage else ""
-        inputs = {"input": content}
+        inputs = {"input": content, "messages": [HumanMessage(content=content)]}
     return EventSourceResponse(_stream(graph, inputs, config))
 
 
@@ -103,5 +108,8 @@ async def graph_resume_sse(request: Request, req: GraphResumeRequest):
     last_id = parse_last_event_id(request.headers)
     if last_id is not None:
         return EventSourceResponse(_stream(graph, None, config, last_event_id=last_id))
-    graph.update_state(config, {"clarification_response": req.clarificationResponse})
+    graph.update_state(config, {
+        "clarification_response": req.clarificationResponse,
+        "messages": [HumanMessage(content=req.clarificationResponse)],
+    })
     return EventSourceResponse(_stream(graph, None, config))
