@@ -4,7 +4,7 @@ import json
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from sse_starlette.sse import EventSourceResponse
 
@@ -20,6 +20,19 @@ router = APIRouter()
 
 
 # ===== agent =====
+
+
+def _to_lc_message(message):
+    """将前端消息转为 LangChain 对话消息，仅保留 user/assistant。"""
+    if message.role == "assistant":
+        return AIMessage(content=message.content)
+    return HumanMessage(content=message.content)
+
+
+def _build_run_messages(req: AgentRunRequest):
+    messages = [_to_lc_message(m) for m in (req.messages or [])]
+    messages.append(_to_lc_message(req.newMessage))
+    return messages
 
 @router.get("/list-apps", tags=["agent"])
 def list_apps() -> list[str]:
@@ -86,19 +99,26 @@ async def run_sse(request: Request, req: AgentRunRequest, background_tasks: Back
     if last_id is not None:
         # 断线重连：只重放缓存事件，不重新执行 agent
         return EventSourceResponse(_stream_agent(agent, None, config, last_event_id=last_id))
-    # mem0 检索注入：从长期记忆找相关，注入 system message
+    # mem0 检索注入：从长期记忆找相关，由 middleware 临时拼入 system prompt
     memories = search_memories(req.newMessage.content, req.userId or "")
     if memories:
-        mem_text = "\n".join(f"- {m}" for m in memories)
-        inputs = {"messages": [
-            SystemMessage(content=f"以下是关于该用户的长期记忆，回答时可参考：\n{mem_text}"),
-            HumanMessage(content=req.newMessage.content),
-        ]}
-    else:
-        inputs = {"messages": [HumanMessage(content=req.newMessage.content)]}
+        config["metadata"]["user_memories"] = memories
+    inputs = {"messages": _build_run_messages(req)}
+    created = thread_service.ensure_thread_meta(
+        req.threadId,
+        req.appName,
+        req.userId,
+        req.newMessage.content,
+    )
     # mem0 自动提取：对话结束后后台提交（不阻塞 SSE 流）
     if req.userId:
         background_tasks.add_task(extract_memories, req.threadId, req.userId)
+    if created:
+        background_tasks.add_task(
+            thread_service.generate_and_update_thread_title,
+            req.threadId,
+            req.newMessage.content,
+        )
     return EventSourceResponse(_stream_agent(agent, inputs, config))
 
 
@@ -149,7 +169,7 @@ def chat_ask(request: Request, question: str) -> str:
 
 @router.get("/apps/{appName}/users/{userId}/threads", tags=["agent"])
 def list_threads(appName: str, userId: str) -> list[dict]:
-    return thread_service.list_threads()
+    return thread_service.list_threads(appName, userId)
 
 
 @router.get("/apps/{appName}/users/{userId}/threads/{threadId}", tags=["agent"])
@@ -169,15 +189,18 @@ def thread_history(appName: str, userId: str, threadId: str) -> list[dict]:
 @router.post("/apps/{appName}/users/{userId}/threads", tags=["agent"])
 def create_thread(appName: str, userId: str) -> dict:
     tid = thread_service.create_thread()
+    thread_service.ensure_thread_meta(tid, appName, userId, first_message="")
     return {"thread_id": tid}
 
 
 @router.post("/apps/{appName}/users/{userId}/threads/{threadId}", tags=["agent"])
 def create_thread_with_id(appName: str, userId: str, threadId: str) -> dict:
-    return {"thread_id": thread_service.create_thread(threadId)}
+    tid = thread_service.create_thread(threadId)
+    thread_service.ensure_thread_meta(tid, appName, userId, first_message="")
+    return {"thread_id": tid}
 
 
 @router.delete("/apps/{appName}/users/{userId}/threads/{threadId}", tags=["agent"])
 def delete_thread(appName: str, userId: str, threadId: str) -> dict:
-    deleted = thread_service.delete_thread(threadId)
+    deleted = thread_service.delete_thread(threadId, appName, userId)
     return {"deleted": threadId if deleted else None}

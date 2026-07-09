@@ -1,4 +1,4 @@
-"""Embedding 模型工厂 — 火山方舟 Doubao (OpenAI 兼容, 2048 维)."""
+"""Embedding 模型工厂 — 火山方舟 Doubao (OpenAI 兼容, 默认 1024 维)."""
 
 from functools import lru_cache
 

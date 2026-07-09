@@ -20,6 +20,7 @@ class AgentRunRequest(BaseModel):
     appName: str
     userId: str | None = None
     threadId: str
+    messages: list[UserMessage] | None = None
     newMessage: UserMessage
     streaming: bool = False
     stateDelta: dict | None = None

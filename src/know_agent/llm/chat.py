@@ -19,3 +19,16 @@ def get_chat_model() -> ChatOpenAI:
         max_retries=3,
         timeout=30,
     )
+
+
+@lru_cache
+def get_thread_title_model() -> ChatOpenAI:
+    s = get_settings()
+    return ChatOpenAI(
+        model=s.thread_title_model or s.deepseek_model,
+        api_key=s.thread_title_api_key or s.deepseek_api_key,
+        base_url=s.thread_title_base_url or s.deepseek_base_url,
+        temperature=0,
+        max_retries=2,
+        timeout=15,
+    )

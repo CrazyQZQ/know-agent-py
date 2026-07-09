@@ -50,6 +50,8 @@ def test_run_sse_returns_429_after_exceeding_limit(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT", "2/minute")
     get_settings.cache_clear()
     monkeypatch.setattr(agent_router, "get_react_agent", lambda: _FakeAgent())
+    monkeypatch.setattr(agent_router.thread_service, "ensure_thread_meta", lambda *args, **kwargs: False)
+    monkeypatch.setattr(agent_router.thread_service, "generate_and_update_thread_title", lambda *args, **kwargs: None)
 
     client = TestClient(create_app())
     payload = _payload()

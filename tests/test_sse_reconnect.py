@@ -73,6 +73,8 @@ def test_run_sse_reconnect_replays_cached_events(monkeypatch):
 
     fake = _ReconnectAgent()
     monkeypatch.setattr(agent_router, "get_react_agent", lambda: fake)
+    monkeypatch.setattr(agent_router.thread_service, "ensure_thread_meta", lambda *args, **kwargs: False)
+    monkeypatch.setattr(agent_router.thread_service, "generate_and_update_thread_title", lambda *args, **kwargs: None)
 
     client = TestClient(create_app())
     payload = {

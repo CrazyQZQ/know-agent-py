@@ -53,6 +53,13 @@ type PageResponse<T> = {
   size: number;
 };
 
+export type ThreadItem = {
+  thread_id: string;
+  name?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
@@ -309,9 +316,17 @@ export async function getThreadHistory(
 }
 
 export async function listThreads(token: string | null, appName: string, userId: string) {
-  return request<{ thread_id: string }[]>(
+  return request<ThreadItem[]>(
     `/apps/${appName}/users/${userId}/threads`,
     {},
+    token
+  );
+}
+
+export async function deleteThread(token: string | null, appName: string, userId: string, threadId: string) {
+  return request<{ deleted: string | null }>(
+    `/apps/${appName}/users/${userId}/threads/${threadId}`,
+    { method: "DELETE" },
     token
   );
 }

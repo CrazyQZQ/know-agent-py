@@ -13,7 +13,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware, SummarizationMiddleware, ToolCallLimitMiddleware
 
 from know_agent.agents.checkpoint import get_checkpointer
-from know_agent.agents.middleware import LoggingMiddleware
+from know_agent.agents.middleware import LoggingMiddleware, MemoryContextMiddleware
 from know_agent.configuration import get_settings
 from know_agent.llm.chat import get_chat_model
 from know_agent.tools.datetime import get_current_time
@@ -49,6 +49,7 @@ def _build_middleware(chat):
     """构建 agent middleware：日志 + 摘要 + 工具上限 + HITL（按配置）."""
     mw = [
         LoggingMiddleware(),
+        MemoryContextMiddleware(),
         SummarizationMiddleware(model=chat, trigger=("messages", 20)),
         ToolCallLimitMiddleware(run_limit=TOOL_CALL_LIMIT),
     ]

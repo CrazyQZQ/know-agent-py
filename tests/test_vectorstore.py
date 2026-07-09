@@ -213,6 +213,37 @@ def test_hnsw_ef_search_config_default():
     assert Settings().hnsw_ef_search == 40
 
 
+def test_embedding_dimensions_default_1024():
+    """默认 embedding 维度降到 1024，满足 pgvector HNSW 维度限制。"""
+    from know_agent.configuration import Settings
+    assert Settings().embedding_dimensions == 1024
+
+
+def test_hnsw_migration_does_not_swallow_index_errors():
+    """0004 应真正创建 HNSW 索引，不能再失败后 NOTICE 跳过。"""
+    from pathlib import Path
+
+    migration = Path("alembic/versions/0004_hnsw_index.py").read_text(encoding="utf-8")
+
+    assert "USING hnsw" in migration
+    assert "EXCEPTION WHEN OTHERS" not in migration
+    assert "RAISE NOTICE" not in migration
+
+
+def test_hnsw_rebuild_migration_sets_vector_dimensions_and_resets_embeddings():
+    """0007 要把无维度 vector 改成 vector(1024)，并重置旧向量状态以便重新向量化。"""
+    from pathlib import Path
+
+    migration = Path("alembic/versions/0007_recreate_hnsw_index.py").read_text(encoding="utf-8")
+
+    assert "DELETE FROM langchain_pg_embedding" in migration
+    assert "TYPE vector(1024)" in migration
+    assert "embedding_id = NULL" in migration
+    assert "status = 'STORED'" in migration
+    assert "status = 'CHUNKED'" in migration
+    assert "USING hnsw" in migration
+
+
 # ---- 熔断降级 ----
 
 def test_get_vectorstore_failure_returns_none(monkeypatch):

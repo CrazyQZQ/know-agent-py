@@ -55,12 +55,15 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
+    thread_title_api_key: str | None = None
+    thread_title_base_url: str | None = None
+    thread_title_model: str | None = None
 
     # Embedding — 火山方舟 Doubao (OpenAI 兼容)
     ark_api_key: str | None = None
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     ark_embedding_model: str = "doubao-embedding-vision"
-    embedding_dimensions: int = 2048
+    embedding_dimensions: int = 1024
 
     # PostgreSQL — 业务数据 + pgvector 向量 + pg_trgm 关键词 + langgraph checkpoint
     database_url: str | None = None
