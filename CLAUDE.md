@@ -47,7 +47,7 @@ uv run pytest tests/test_foo.py::test_bar        # 跑单个测试
 - **PG 索引名 schema 内唯一**：MySQL 索引名表内唯一即可，PG 是 schema 内唯一。两表都有 `idx_status` 会冲突——segment 表用 `idx_segment_status`。新增索引注意命名。
 - **Embedding 必须 `check_embedding_ctx_length=False`**（`llm/embedding.py`）：火山方舟 Doubao 不接受 tiktoken 切出的 token id 数组，只接受字符串。改模型时勿删此参数。
 - **PostgresSaver 必须 `autocommit=True`**（`agents/checkpoint.py`）：`psycopg.connect(pg_url, autocommit=True)`。原因：① `setup()` 的 `CREATE INDEX CONCURRENTLY` 不能在事务内；② langgraph 写 checkpoint 不显式 commit，依赖 autocommit 持久化。不加会导致 checkpoint 写丢失（`count=0`）。
-- **PostgresSaver 是同步 checkpointer**：不支持 `ainvoke`/`astream` 的异步 checkpoint 操作（`NotImplementedError`）。用同步 `agent.invoke()` 或 `astream`（astream 的 checkpointer 同步 get 仍可用）。前端 SSE 用 `astream` 没问题，但别用 `ainvoke`。
+- **PostgresSaver 是同步 checkpointer**：不支持 `ainvoke`/`astream` 的异步 checkpoint 操作（`NotImplementedError`，`aget_tuple` 未实现）。**agent 和 graph 都用同步 `stream()`**（`routers/agent.py` 的 `agent.stream`、`routers/graph.py` 的 `graph.stream`），`EventSourceResponse` 接受同步 generator。别用 `astream`/`ainvoke`（astream 也会调 `aget_tuple` 报错）。
 - **ORM `metadata` 字段用 `metadata_` 别名**（`models/document.py`）：`metadata` 是 SQLAlchemy 保留属性。列名仍是 `metadata`（`mapped_column("metadata", JSONB)`），Python 侧访问用 `segment.metadata_`。pydantic `SegmentOut` 用 `validation_alias="metadata_"` 对齐。
 - **langgraph 3.x checkpoint 表名**：`checkpoints` / `checkpoint_writes` / `checkpoint_blobs`（不是 `writes`）。`agents/thread.py` 的 `delete_thread` 删这三张表。
 - **OSS endpoint 自动补全**（`services/oss.py`）：`_normalize_endpoint` 会给无 scheme 的 endpoint 补 `http://` + 默认端口 9000（RustFS 默认）。相对路径的 `template_url`（如 `ppt-templates/ai.pptx`）直接用作 object name，不要截成 `ai.pptx`。
