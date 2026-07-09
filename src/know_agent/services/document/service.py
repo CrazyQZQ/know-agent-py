@@ -11,6 +11,7 @@ split 后分块入 PG（业务）；embed 时入 pgvector（向量）。
 
 import hashlib
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 from langchain_core.documents import Document
 from loguru import logger
@@ -271,7 +272,8 @@ class DocumentProcessService:
             logger.info("pipeline: document {} status={}, skip", doc_id, document.status)
             return
 
-        file_name = document.doc_title or ""
+        # 从 doc_url 提取原始文件名（含后缀）用于类型判断；doc_title 是标题无后缀
+        file_name = unquote(document.doc_url.rsplit("/", 1)[-1]) if document.doc_url else (document.doc_title or "")
         # 1. 解析（UPLOADED → CONVERTING → CONVERTED / STORED）
         try:
             content = get_oss().download(_extract_object_name(document.doc_url)).read()
@@ -291,7 +293,10 @@ class DocumentProcessService:
 
         # 2. 分块（CONVERTED → CHUNKED）
         try:
-            self.split(doc_id, SplitParams())
+            file_type = get_file_type(document.converted_doc_url or document.doc_url)
+            # TXT 无结构按长度；MD/HTML/PDF/Word 有结构按标题（SMART）
+            split_type = "LENGTH" if file_type == FileType.TXT else "SMART"
+            self.split(doc_id, SplitParams(split_type=split_type))
         except Exception as e:
             logger.exception("document split failed: {}", doc_id)
             self._mark_failed(doc_id, f"分块失败: {e}")

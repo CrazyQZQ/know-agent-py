@@ -128,7 +128,8 @@ def _split_markdown_by_header(text: str, chunk_size: int, overlap: int) -> list[
     _flush_chunk(header_chunks, current, current_meta)
 
     if not header_chunks:
-        return _split_plain_text(text, chunk_size, overlap, {})
+        # 无标题：按段落（双换行）切，超长按 chunk_size 细分，而非纯长度
+        return _split_by_separator(text, None, chunk_size, overlap)
 
     result: list[DocumentChunk] = []
     for chunk in header_chunks:

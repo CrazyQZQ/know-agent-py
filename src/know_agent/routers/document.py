@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from know_agent.configuration import get_settings
 from know_agent.core.deps import get_db
-from know_agent.core.request_context import get_current_roles
+from know_agent.core.request_context import get_current_roles, get_current_user
 from know_agent.models.enums import DocumentStatus
 from know_agent.schemas.document import DocumentOut, PageResponse, SearchResultOut, SegmentOut
 from know_agent.services.document.repository import DocumentRepository
@@ -23,7 +23,6 @@ segment_router = APIRouter()
 async def upload(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    upload_user: str = Form(...),
     title: str = Form(...),
     description: str = Form(...),
     knowledge_base_type: str = Form(...),
@@ -40,6 +39,8 @@ async def upload(
     allowed = {e.strip().lower() for e in s.upload_allowed_extensions.split(",") if e.strip()}
     if ext not in allowed:
         raise HTTPException(415, f"不支持的文件类型: .{ext or '?'}, 允许: {sorted(allowed)}")
+    # 上传人从当前登录用户取（contextvar，由认证中间件注入），前端不传
+    upload_user = get_current_user() or "web"
     params = UploadParams(
         upload_user=upload_user,
         title=title,
