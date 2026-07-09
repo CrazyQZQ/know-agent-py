@@ -261,6 +261,190 @@
 
 ---
 
+## 生产落地补充路线图（后端）
+
+> 这部分承接前面已完成的“功能可用”路线图，目标是把当前单实例/开发态实现逐步推进到可恢复、可扩展、可审计的生产后端。  
+> 原则：不一次性大改架构；先补最影响稳定性的点，再补多实例和运维治理。
+
+### P0. 可靠后台任务
+
+- [ ] **P0.1 文档处理任务持久化**
+  - 现状：`upload` 通过 FastAPI `BackgroundTasks` 触发解析、切分、向量化；进程重启、worker 崩溃会丢任务。
+  - 目标：文档处理任务进入持久化队列，支持恢复、重试、排队、人工重跑。
+  - 改动点：
+    - 新增 `background_jobs` 或 `document_jobs` 表：`job_id`、`job_type`、`resource_id`、`status`、`attempts`、`max_attempts`、`next_run_at`、`locked_by`、`locked_until`、`error_code`、`error_message`。
+    - `upload` 只负责入库、上传 OSS、创建任务，不直接依赖进程内后台任务完成。
+    - worker 使用 PG lease 领取任务，执行 `run_document_pipeline`，成功/失败均落库。
+    - 支持服务启动时扫描 `running` 但 lease 过期的任务并重新入队。
+  - 验收：
+    - 上传后杀掉 app 进程，重启 worker 后任务能继续处理到 `VECTOR_STORED` 或明确 `FAILED`。
+    - 同一文档任务不会被两个 worker 同时执行。
+    - 失败任务记录可读错误，并按 `max_attempts` 自动重试。
+
+- [ ] **P0.2 Pipeline 步骤级恢复点**
+  - 现状：文档状态机有 `UPLOADED / CONVERTING / CONVERTED / CHUNKED / VECTOR_STORED / FAILED`，但任务失败后恢复策略仍偏粗。
+  - 目标：每个阶段可幂等重跑，失败后从最近的可靠状态继续。
+  - 改动点：
+    - 解析、切分、向量化分别记录开始/结束时间、耗时、失败原因。
+    - `run_pipeline` 根据当前 `document.status` 决定从哪一步继续，而不是只处理 `UPLOADED`。
+    - 向量写入使用批次级提交，记录已完成 segment，避免大文档失败后全量重算。
+  - 验收：
+    - 人为让向量化中途失败，修复后重跑只处理未完成 segment。
+    - `FAILED` 文档可通过管理接口或脚本重新入队。
+
+### P0. 多实例共享状态
+
+- [ ] **P0.3 SSE 事件缓存外置**
+  - 现状：`core/sse_store.py` 使用进程内内存缓存，单 worker 可用，多实例下 `Last-Event-ID` 可能连到另一台机器而取不到历史事件。
+  - 目标：SSE 重连事件缓存外置到 PostgreSQL 或 Redis。
+  - 改动点：
+    - 新增 `sse_events` 表或 Redis Stream：按 `stream_id/thread_id` 存 `event_id`、`event`、`data`、`created_at`、`expires_at`。
+    - `_stream_agent` / `_stream` 写事件时落共享存储。
+    - `Last-Event-ID` 重连从共享存储读取。
+    - 定期清理过期事件。
+  - 验收：
+    - 两个 app 实例后，第一次连接实例 A，中断后重连实例 B，仍能从 `Last-Event-ID` 后续传。
+
+- [ ] **P0.4 Token 缓存与注销状态外置**
+  - 现状：Casdoor token 缓存和 `_revoked_tokens` 都在进程内，重启或多实例后注销状态不一致。
+  - 目标：认证缓存、注销黑名单在多实例间一致。
+  - 改动点：
+    - 使用 Redis/PG 存 token 验证缓存和 revoked token，设置 TTL。
+    - logout 写共享黑名单。
+    - 保留本地短 TTL 缓存作为可选优化，但以共享状态为准。
+  - 验收：
+    - 实例 A logout 后，实例 B 立即拒绝同 token。
+
+### P1. 集成测试与质量门禁
+
+- [ ] **P1.1 Docker Compose 集成测试**
+  - 现状：已有较多 mock 单元测试，但真实 PostgreSQL、pgvector、pg_trgm、迁移、SSE、权限链路还缺端到端验证。
+  - 目标：在本地和 CI 中用真实基础设施跑核心链路。
+  - 改动点：
+    - 新增 `docker-compose.test.yml`：PostgreSQL(pgvector) + app/test runner。
+    - 测试启动时执行 `alembic upgrade head`。
+    - 覆盖文档上传、状态轮询、切分、向量写入、keyword/vector/hybrid 检索、角色权限过滤、SSE 重连。
+  - 验收：
+    - 一条命令可跑完整集成测试。
+    - 迁移失败、索引失败、权限绕过能在 CI 暴露。
+
+- [ ] **P1.2 CI 质量门禁**
+  - 现状：路线图已有基础 CI 项，但仍未落到工程约束。
+  - 目标：PR 必须通过格式/静态检查、单测、迁移检查、核心集成测试。
+  - 改动点：
+    - 引入 `ruff`，先只启用低争议规则，避免一次性格式大改。
+    - GitHub Actions 或本地 CI：`uv sync --frozen`、`ruff check`、`pytest`、`alembic upgrade head`。
+    - 后续接入 RAG eval baseline，真实数据集成熟后再设阈值。
+  - 验收：
+    - 破坏数据库迁移、核心状态机、权限过滤时 CI 失败。
+
+### P1. 可观测性与运维
+
+- [ ] **P1.3 结构化 JSON 日志**
+  - 现状：loguru 已注入 `request_id`，但输出仍偏开发态文本。
+  - 目标：生产日志可被日志平台稳定采集、检索、聚合。
+  - 改动点：
+    - `APP_ENV=prod` 时输出 JSON 日志。
+    - 标准字段：`timestamp`、`level`、`request_id`、`user_id`、`route`、`method`、`status_code`、`duration_ms`、`thread_id`、`document_id`、`job_id`。
+    - 异常日志附 `error_type`、`error_code`、脱敏后的 `error_message`。
+  - 验收：
+    - 任意文档处理失败可通过 `request_id/document_id/job_id` 串起 HTTP、任务、LLM/OSS 调用日志。
+
+- [ ] **P1.4 Prometheus 指标与告警**
+  - 现状：有 LangSmith trace，但缺服务级、任务级、资源级指标。
+  - 目标：能看见吞吐、延迟、失败率、队列积压、LLM 成本和检索质量趋势。
+  - 改动点：
+    - 暴露 `/metrics`。
+    - 指标覆盖：HTTP QPS/latency/error、SSE 活跃连接、任务队列积压、任务耗时/失败率、LLM token/耗时、Embedding 批次耗时、RAG 检索耗时、rerank 耗时、DB 连接池。
+    - 建议告警：任务积压超过阈值、失败率升高、外部 LLM 连续失败、DB 连接池耗尽、SSE 错误率升高。
+  - 验收：
+    - Grafana 能看到三条主链路的延迟与错误率。
+    - 人为制造 OSS/LLM 失败后能触发对应告警。
+
+### P1. 安全加固
+
+- [ ] **P1.5 上传与解析安全**
+  - 现状：已有文件大小和扩展名白名单，但还缺内容级校验和隔离策略。
+  - 目标：降低恶意文件、伪扩展名、解析器漏洞、对象路径污染风险。
+  - 改动点：
+    - 增加 MIME/content sniffing，扩展名与实际类型不匹配则拒绝。
+    - 规范化 OSS object name，避免用户文件名直接进入路径。
+    - PDF/Word 解析放入低权限 worker，限制单文件解析时间和内存。
+    - 可选接入杀毒扫描或文件安全网关。
+  - 验收：
+    - `.pdf` 后缀但实际为脚本/二进制异常内容的文件被拒绝。
+    - 超时或解析异常不会拖垮 app 进程。
+
+- [ ] **P1.6 API 权限与审计**
+  - 现状：已有 API Key / Casdoor / 角色过滤；审计和生产默认安全策略还可加强。
+  - 目标：关键操作可审计，生产默认不裸奔。
+  - 改动点：
+    - `APP_ENV=prod` 时强制 `AUTH_ENABLED=true`，禁止 `CORS_ORIGINS=*`。
+    - 记录审计日志：登录/登出、上传、删除、重跑任务、修改权限、HITL 审批。
+    - API Key 模式下明确只允许公开文档或服务级调用，不混用用户权限。
+  - 验收：
+    - 生产配置缺认证或 CORS 为 `*` 时启动失败。
+    - 删除文档、重跑任务、审批工具调用都能查到审计记录。
+
+### P2. 部署与数据库治理
+
+- [ ] **P2.1 迁移独立执行**
+  - 现状：Dockerfile 启动命令里执行 `alembic upgrade head`，多实例部署时可能并发抢迁移。
+  - 目标：迁移作为独立 release job，app 只负责启动服务。
+  - 改动点：
+    - 拆分镜像启动命令：`migrate` job 和 `app` command。
+    - 部署流程先跑迁移，成功后滚动更新 app。
+    - 迁移增加回滚说明和大表变更风险提示。
+  - 验收：
+    - 多副本 app 启动时不会重复执行迁移。
+    - 迁移失败时 app 不发布新版本。
+
+- [ ] **P2.2 pgvector 索引方案确认**
+  - 现状：HNSW 迁移里对维度限制做了异常跳过；如果 embedding 维度为 2048，索引可能没有真正建成。
+  - 目标：明确线上向量索引策略，避免“迁移成功但性能没达标”。
+  - 改动点：
+    - 确认当前 pgvector 版本对 `vector(2048)` HNSW 的支持情况。
+    - 选型：降低 embedding 维度、改 halfvec、拆分/升级 pgvector，或接受无 HNSW 并设置数据量上限。
+    - 建立基准测试：1k/10k/100k segments 的召回率、P95 延迟。
+  - 验收：
+    - 线上目标数据量下 hybrid/vector 检索 P95 达标，并有索引存在性检查。
+
+- [ ] **P2.3 备份、恢复与数据保留**
+  - 现状：单 PostgreSQL 承载业务数据、向量、checkpoint，RustFS 承载原始/转换文件；备份恢复策略未文档化。
+  - 目标：可恢复用户数据、文档、向量和会话状态。
+  - 改动点：
+    - PostgreSQL 定期备份，明确 RPO/RTO。
+    - RustFS bucket 备份或版本化。
+    - 定义 checkpoint、SSE 事件、任务历史、审计日志保留周期。
+    - 编写恢复演练脚本和 runbook。
+  - 验收：
+    - 从备份恢复到新环境后，文档列表、检索、会话历史可用。
+
+### P2. 成本与容量治理
+
+- [ ] **P2.4 用户/租户级配额**
+  - 现状：已有 IP 级限流和 tool call limit，但缺用户级成本约束。
+  - 目标：避免单用户或单租户耗尽 LLM、Embedding、存储和任务资源。
+  - 改动点：
+    - 统计用户级 token、请求数、上传大小、文档数、任务数。
+    - 配额策略：每日 token、并发任务数、单文档大小、知识库总容量。
+    - 超额返回明确错误码，并写审计日志。
+  - 验收：
+    - 同一用户超过并发任务数后新任务进入排队或拒绝。
+    - 超过 token/上传容量限制时返回可解释错误。
+
+- [ ] **P2.5 Run 取消与超时治理**
+  - 现状：SSE 能流式返回，但 agent/graph 长运行任务的取消、超时、资源释放还不完整。
+  - 目标：用户停止生成或超时后，后端能及时停止后续高成本调用。
+  - 改动点：
+    - 为 agent/graph run 建立运行记录：`run_id`、`thread_id`、`status`、`started_at`、`deadline_at`。
+    - 支持取消接口，流式循环和工具调用前检查取消状态。
+    - 设置最大运行时间、最大 token、最大工具调用次数。
+  - 验收：
+    - 前端停止生成后，后端 run 状态变为 `cancelled`，不再继续调用 LLM/工具。
+
+---
+
 ## 执行约定
 
 1. 严格按第一批 → 第二批 → 第三批顺序，不跳级
