@@ -50,10 +50,11 @@ def _thread_messages(thread_id: str) -> list[dict]:
     cp = get_checkpointer()
     if cp is None:
         return []
-    state = cp.get_state({"configurable": {"thread_id": thread_id}})
-    if not state or not state.values:
+    checkpoint_tuple = cp.get_tuple({"configurable": {"thread_id": thread_id}})
+    if not checkpoint_tuple:
         return []
-    return [m for m in (_format_message(msg) for msg in state.values.get("messages", [])) if m]
+    messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
+    return [m for m in (_format_message(msg) for msg in messages) if m]
 
 
 def get_thread(thread_id: str) -> dict | None:

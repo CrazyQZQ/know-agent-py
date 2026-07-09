@@ -11,14 +11,14 @@ class _Msg:
 
 class _State:
     def __init__(self, messages):
-        self.values = {"messages": messages} if messages else {}
+        self.checkpoint = {"channel_values": {"messages": messages}} if messages else {}
 
 
 class _FakeCp:
     def __init__(self, state):
         self._state = state
 
-    def get_state(self, config):
+    def get_tuple(self, config):
         return self._state
 
 
