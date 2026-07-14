@@ -6,13 +6,13 @@ import { useTheme } from "@/hooks/useTheme";
 import { AssistantPage } from "@/features/assistant/AssistantPage";
 import { WorkflowsPage } from "@/features/workflows/WorkflowsPage";
 import { WorkflowRunPage } from "@/features/workflows/WorkflowRunPage";
+import { KnowledgeListPage } from "@/features/knowledge/KnowledgeListPage";
+import { DocumentDetailPage } from "@/features/knowledge/DocumentDetailPage";
 
 export function ProtectedRoute() {
   const { auth } = useAuth();
   return auth ? <Outlet /> : <Navigate to="/login" replace />;
 }
-
-const Page = ({ title }: { title: string }) => <section className="p-6"><h1 className="text-2xl font-semibold">{title}</h1></section>;
 
 export function AppRouter() {
   const { auth, logout } = useAuth();
@@ -24,8 +24,8 @@ export function AppRouter() {
         <Route path="/assistant/:threadId?" element={<AssistantPage />} />
         <Route path="/workflows" element={<WorkflowsPage />} />
         <Route path="/workflows/:workflowId/:threadId?" element={<WorkflowRunPage />} />
-        <Route path="/knowledge" element={<Page title="知识库" />} />
-        <Route path="/knowledge/:documentId" element={<Page title="文档详情" />} />
+        <Route path="/knowledge" element={<KnowledgeListPage />} />
+        <Route path="/knowledge/:documentId" element={<DocumentDetailPage />} />
       </Route>
     </Route>
     <Route path="*" element={<Navigate to="/assistant" replace />} />
