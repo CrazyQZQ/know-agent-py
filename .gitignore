@@ -60,6 +60,9 @@ tmp/
 # Cursor IDE
 .cursor/
 
+# Local Git worktrees
+.worktrees/
+
 # Node / 前端（know-agent-ui）
 node_modules/
 .next/
