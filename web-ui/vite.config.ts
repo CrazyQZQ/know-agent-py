@@ -32,9 +32,13 @@ export function webuiManualChunk(id: string): string | undefined {
   }
 }
 
+export function resolveApiTarget(env: Record<string, string | undefined>): string {
+  return env.VITE_API_BASE_URL || "http://localhost:8000";
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const target = env.VITE_API_BASE_URL || "http://localhost:8000";
+  const target = resolveApiTarget(env);
 
   return {
     plugins: [react()],

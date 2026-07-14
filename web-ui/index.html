@@ -73,6 +73,12 @@
           opacity: 0.85;
         }
       }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot-dot {
+          animation: none;
+        }
+      }
     </style>
     <script>
       (function () {

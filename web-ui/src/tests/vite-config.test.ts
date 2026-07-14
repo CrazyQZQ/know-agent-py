@@ -1,12 +1,17 @@
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 import { describe, expect, it } from "vitest";
 import type { ConfigEnv, UserConfig, UserConfigExport } from "vite";
 
-import viteConfig, { webuiManualChunk } from "../../vite.config";
+import viteConfig, { resolveApiTarget, webuiManualChunk } from "../../vite.config";
 
 const require = createRequire(import.meta.url);
-const packageJson = require("../../package.json") as { name: string };
+const packageJson = require("../../package.json") as {
+  name: string;
+  engines?: { node?: string };
+};
+const indexHtml = readFileSync(require.resolve("../../index.html"), "utf8");
 
 async function resolveViteConfig(config: UserConfigExport): Promise<UserConfig> {
   const configEnv: ConfigEnv = {
@@ -24,24 +29,24 @@ describe("Know-Agent Vite runtime configuration", () => {
     expect(packageJson.name).toBe("know-agent-web-ui");
   });
 
-  it("proxies the API to the local Know-Agent backend by default", async () => {
-    const previousTarget = process.env.VITE_API_BASE_URL;
-    const config = await (async () => {
-      delete process.env.VITE_API_BASE_URL;
+  it("requires a Node release supported by ESLint 10", () => {
+    expect(packageJson.engines?.node).toBe("^20.19.0 || ^22.13.0 || >=24");
+  });
 
-      try {
-        return await resolveViteConfig(viteConfig);
-      } finally {
-        if (previousTarget === undefined) {
-          delete process.env.VITE_API_BASE_URL;
-        } else {
-          process.env.VITE_API_BASE_URL = previousTarget;
-        }
-      }
-    })();
+  it("uses the local Know-Agent backend when no API target is configured", () => {
+    expect(resolveApiTarget({})).toBe("http://localhost:8000");
+  });
+
+  it("uses an explicitly configured API target", () => {
+    expect(resolveApiTarget({ VITE_API_BASE_URL: "http://api.example" })).toBe(
+      "http://api.example",
+    );
+  });
+
+  it("configures the /v1 proxy with origin rewriting", async () => {
+    const config = await resolveViteConfig(viteConfig);
 
     expect(config.server?.proxy?.["/v1"]).toMatchObject({
-      target: "http://localhost:8000",
       changeOrigin: true,
     });
   });
@@ -50,6 +55,14 @@ describe("Know-Agent Vite runtime configuration", () => {
     const config = await resolveViteConfig(viteConfig);
 
     expect(config.build?.outDir).toBe("dist");
+  });
+});
+
+describe("Know-Agent boot shell", () => {
+  it("disables the boot animation when reduced motion is requested", () => {
+    expect(indexHtml).toMatch(
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.boot-dot\s*\{[\s\S]*?animation:\s*none;/,
+    );
   });
 });
 
