@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { ApiError } from "@/lib/api-client";
+import { ApiError, setUnauthorizedHandler } from "@/lib/api-client";
 import { login as loginRequest, logout as logoutRequest, type AuthState } from "./auth-api";
 
 const STORAGE_KEY = "know-agent.auth";
@@ -32,6 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuth(null);
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* unavailable storage */ }
   }, []);
+
+  useEffect(() => setUnauthorizedHandler(clear), [clear]);
 
   const login = useCallback(async (username: string, password: string) => {
     try {

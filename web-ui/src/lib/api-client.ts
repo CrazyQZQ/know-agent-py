@@ -10,6 +10,16 @@ export class ApiError extends Error {
 
 export type ApiRequestOptions = RequestInit & { token?: string };
 
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): () => void {
+  unauthorizedHandler = handler;
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = null;
+  };
+}
+
 export async function apiRequest<T>(
   path: string,
   options: ApiRequestOptions = {},
@@ -26,6 +36,8 @@ export async function apiRequest<T>(
   }
 
   const response = await fetch(path, { ...requestInit, headers });
+
+  if (response.status === 401) unauthorizedHandler?.();
 
   if (!response.ok) {
     let detail: string | undefined;
