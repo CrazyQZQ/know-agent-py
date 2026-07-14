@@ -4,6 +4,8 @@ import { useAuth } from "@/features/auth/AuthProvider";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { useTheme } from "@/hooks/useTheme";
 import { AssistantPage } from "@/features/assistant/AssistantPage";
+import { WorkflowsPage } from "@/features/workflows/WorkflowsPage";
+import { WorkflowRunPage } from "@/features/workflows/WorkflowRunPage";
 
 export function ProtectedRoute() {
   const { auth } = useAuth();
@@ -20,8 +22,8 @@ export function AppRouter() {
     <Route element={<ProtectedRoute />}>
       <Route element={auth ? <AppShell user={auth.user} onLogout={() => void logout()} onToggleTheme={toggle}><Outlet /></AppShell> : <Navigate to="/login" replace />}>
         <Route path="/assistant/:threadId?" element={<AssistantPage />} />
-        <Route path="/workflows" element={<Page title="工作流" />} />
-        <Route path="/workflows/:workflowId/:threadId?" element={<Page title="工作流运行" />} />
+        <Route path="/workflows" element={<WorkflowsPage />} />
+        <Route path="/workflows/:workflowId/:threadId?" element={<WorkflowRunPage />} />
         <Route path="/knowledge" element={<Page title="知识库" />} />
         <Route path="/knowledge/:documentId" element={<Page title="文档详情" />} />
       </Route>
