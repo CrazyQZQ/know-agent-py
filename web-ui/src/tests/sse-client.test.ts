@@ -116,4 +116,37 @@ describe("streamSse", () => {
     await expect(pending).rejects.toBe(abortError);
     expect(fetchMock.mock.calls[0][1]?.signal).toBe(controller.signal);
   });
+
+  it("cancels and releases the reader when an event handler fails, preserving the original error", async () => {
+    const originalError = new Error("event handler failed");
+    const releaseLock = vi.fn();
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: new TextEncoder().encode("data: payload\\n\\n"),
+      })
+      .mockResolvedValueOnce({ done: true, value: undefined });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: { getReader: () => ({ read, cancel, releaseLock }) },
+      } as unknown as Response),
+    );
+
+    await expect(
+      streamSse({
+        path: "/v1/stream",
+        body: {},
+        onEvent: () => {
+          throw originalError;
+        },
+      }),
+    ).rejects.toBe(originalError);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalledOnce();
+  });
 });

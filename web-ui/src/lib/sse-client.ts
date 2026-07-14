@@ -1,3 +1,5 @@
+import { ApiError } from "@/lib/api-client";
+
 export interface SseEvent {
   event: string;
   data: string;
@@ -61,20 +63,30 @@ export async function streamSse(options: StreamSseOptions): Promise<void> {
   const decoder = new TextDecoder();
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-    let boundary = frameBoundary(buffer);
-    while (boundary) {
-      dispatchFrame(buffer.slice(0, boundary.index), options.onEvent);
-      buffer = buffer.slice(boundary.index + boundary.length);
-      boundary = frameBoundary(buffer);
+      let boundary = frameBoundary(buffer);
+      while (boundary) {
+        dispatchFrame(buffer.slice(0, boundary.index), options.onEvent);
+        buffer = buffer.slice(boundary.index + boundary.length);
+        boundary = frameBoundary(buffer);
+      }
     }
-  }
 
-  buffer += decoder.decode();
-  if (buffer.length > 0) dispatchFrame(buffer, options.onEvent);
+    buffer += decoder.decode();
+    if (buffer.length > 0) dispatchFrame(buffer, options.onEvent);
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      // Preserve the original read or event-handler error.
+    }
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
 }
-import { ApiError } from "@/lib/api-client";

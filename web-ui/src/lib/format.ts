@@ -136,8 +136,9 @@ export function formatTurnLatency(ms: number, locale?: string): string {
       minimumFractionDigits: 0,
     }).format(secTotal);
   }
-  const wholeMin = Math.floor(secTotal / 60);
-  const remSec = Math.max(0, Math.round(secTotal - wholeMin * 60));
+  const roundedTotalSeconds = Math.round(secTotal);
+  const wholeMin = Math.floor(roundedTotalSeconds / 60);
+  const remSec = roundedTotalSeconds % 60;
   const minStr = new Intl.NumberFormat(loc, {
     style: "unit",
     unit: "minute",

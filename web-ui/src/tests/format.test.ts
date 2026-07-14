@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatClock, formatDateTime } from "@/lib/format";
+import { formatClock, formatDateTime, formatTurnLatency } from "@/lib/format";
 
 describe("formatClock", () => {
   it("formats message times with stable two-digit minutes and seconds", () => {
@@ -25,5 +25,11 @@ describe("formatDateTime", () => {
 
   it("returns an invalid non-empty input unchanged", () => {
     expect(formatDateTime("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("formatTurnLatency", () => {
+  it("carries rounded seconds into the next minute", () => {
+    expect(formatTurnLatency(119_999, "en-US")).toBe("2m 0s");
   });
 });
