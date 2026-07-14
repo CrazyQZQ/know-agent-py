@@ -9,7 +9,7 @@ describe("AppShell", () => {
   it("shows only the three Know-Agent primary modules", () => {
     render(
       <MemoryRouter initialEntries={["/assistant"]}>
-        <AppShell user={{ name: "lxqq", roles: [] }} onLogout={vi.fn()} onToggleTheme={vi.fn()}>
+        <AppShell user={{ name: "lxqq", roles: ["管理员"] }} onLogout={vi.fn()} onToggleTheme={vi.fn()}>
           <h1>Assistant</h1>
         </AppShell>
       </MemoryRouter>,
@@ -20,8 +20,13 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: "知识库" })).toBeInTheDocument();
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.getByText("lxqq")).toBeInTheDocument();
+    expect(screen.getByText("管理员")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "切换主题" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "切换主题" })).toHaveAttribute("title", "切换主题");
+    expect(screen.getByRole("button", { name: "退出登录" })).toHaveAttribute("title", "退出登录");
+    expect(screen.getByRole("button", { name: "打开导航" })).toBeInTheDocument();
+    expect(screen.getByTestId("app-shell")).toHaveClass("h-dvh", "overflow-hidden");
   });
 
   it("marks running sessions with an accessible spinner", () => {
@@ -34,7 +39,7 @@ describe("AppShell", () => {
       />,
     );
 
-    expect(screen.getByLabelText("季度汇报正在运行")).toHaveClass("animate-spin");
+    expect(screen.getByLabelText("季度汇报正在运行")).toHaveClass("animate-spin", "motion-reduce:animate-none");
   });
 
   it("selects and deletes sessions", () => {
