@@ -3,6 +3,7 @@ import { AppShell } from "@/components/shell/AppShell";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { useTheme } from "@/hooks/useTheme";
+import { AssistantPage } from "@/features/assistant/AssistantPage";
 
 export function ProtectedRoute() {
   const { auth } = useAuth();
@@ -18,7 +19,7 @@ export function AppRouter() {
     <Route path="/login" element={<LoginPage />} />
     <Route element={<ProtectedRoute />}>
       <Route element={auth ? <AppShell user={auth.user} onLogout={() => void logout()} onToggleTheme={toggle}><Outlet /></AppShell> : <Navigate to="/login" replace />}>
-        <Route path="/assistant/:threadId?" element={<Page title="智能助理" />} />
+        <Route path="/assistant/:threadId?" element={<AssistantPage />} />
         <Route path="/workflows" element={<Page title="工作流" />} />
         <Route path="/workflows/:workflowId/:threadId?" element={<Page title="工作流运行" />} />
         <Route path="/knowledge" element={<Page title="知识库" />} />
