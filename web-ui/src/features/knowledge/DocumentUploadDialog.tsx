@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, FileText, UploadCloud } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { apiRequest } from "@/lib/api-client";
+import { listRoles, type RoleOption } from "./knowledge-api";
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "管理员" },
@@ -25,6 +26,15 @@ export function DocumentUploadDialog({ open, onClose }: { open: boolean; onClose
   const [roles, setRoles] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setRolesLoading(true);
+    const requestRoles = typeof listRoles === "function" ? listRoles : () => Promise.resolve([]);
+    void requestRoles(auth?.token ?? "").then(setRoleOptions).catch(() => setRoleOptions([])).finally(() => setRolesLoading(false));
+  }, [auth?.token, open]);
 
   function choose(next: File) {
     setFile(next);
@@ -54,7 +64,8 @@ export function DocumentUploadDialog({ open, onClose }: { open: boolean; onClose
     }
   }
 
-  const selectedRoleLabels = ROLE_OPTIONS.filter((item) => roles.includes(item.value)).map((item) => item.label);
+  const availableRoles = roleOptions.length ? roleOptions.map((item) => ({ value: item.name, label: item.displayName || item.name })) : ROLE_OPTIONS;
+  const selectedRoleLabels = availableRoles.filter((item) => roles.includes(item.value)).map((item) => item.label);
 
   return <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
     <DialogContent className="max-w-xl gap-5 rounded-[22px] border-border/65 p-0 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
@@ -102,7 +113,7 @@ export function DocumentUploadDialog({ open, onClose }: { open: boolean; onClose
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
-              {ROLE_OPTIONS.map((role) => <DropdownMenuCheckboxItem key={role.value} checked={roles.includes(role.value)} onCheckedChange={(checked) => toggleRole(role.value, checked === true)}>{role.label}</DropdownMenuCheckboxItem>)}
+              {rolesLoading ? <DropdownMenuCheckboxItem disabled checked={false}>加载角色中...</DropdownMenuCheckboxItem> : availableRoles.length ? availableRoles.map((role) => <DropdownMenuCheckboxItem key={role.value} checked={roles.includes(role.value)} onCheckedChange={(checked) => toggleRole(role.value, checked === true)}>{role.label}</DropdownMenuCheckboxItem>) : <DropdownMenuCheckboxItem disabled checked={false}>暂无可用角色</DropdownMenuCheckboxItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

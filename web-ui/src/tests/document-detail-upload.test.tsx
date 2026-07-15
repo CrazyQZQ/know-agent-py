@@ -25,6 +25,7 @@ describe("document upload", () => {
     expect(screen.getByLabelText("描述")).toHaveValue("技术方案");
     expect(screen.getByText("技术方案.docx")).toBeInTheDocument();
 
+    fetchMock.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(onClose).toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
