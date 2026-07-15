@@ -1,12 +1,10 @@
-"""PPT 生成 graph — StateGraph 组装.
+"""PPT 生成 graph - StateGraph 组装 + 自登记到 registry.
 
-对应源项目 PptBuildGraph.build()。工作流：
-  START → requirement → (search | clarification)
-          clarification → requirement（interrupt_before，人在回路）
-          search → template_select → template_info → outline → schema → render → END
+工作流：
+  START -> requirement -> (search | clarification)
+          clarification -> requirement（interrupt_before，人在回路）
+          search -> template_select -> template_info -> outline -> schema -> render -> END
 """
-
-from functools import lru_cache
 
 from langgraph.graph import END, START, StateGraph
 
@@ -24,6 +22,8 @@ from know_agent.graphs.ppt.nodes import (
     template_info_node,
 )
 from know_agent.graphs.ppt.state import PptState
+from know_agent.graphs.registry import GraphRegistration, register_graph
+from know_agent.schemas.graph import GraphResumeRequest, ResumeAnswer
 
 GRAPH_NAME = "ppt_build"
 
@@ -59,6 +59,47 @@ def build_ppt_graph():
     )
 
 
-@lru_cache
 def get_ppt_graph():
+    """兼容包装：Task 3 改完路由后删除（改用 registry.get_compiled_graph('ppt_build')）."""
     return build_ppt_graph()
+
+
+def _compose_answers(answers: list[ResumeAnswer]) -> str:
+    """把结构化回答组装成自然语言文本，供 clarification_node 拼回 input."""
+    parts = []
+    for a in answers:
+        text = (a.label or a.value).strip()
+        if text:
+            parts.append(f"{a.id}：{text}")
+    return "\n".join(parts)
+
+
+def _compose_resume_response(req: GraphResumeRequest) -> str:
+    """resume 请求 -> 要写入 state 的文本：优先 answers，回退纯文本，都空抛错."""
+    if req.answers:
+        return _compose_answers(req.answers)
+    resp = req.clarificationResponse or ""
+    if not resp:
+        raise ValueError("answers 或 clarificationResponse 至少需提供一个非空值")
+    return resp
+
+
+register_graph(GraphRegistration(
+    name=GRAPH_NAME,
+    title="PPT 生成",
+    description="根据需求生成 PPT",
+    factory=build_ppt_graph,
+    state_keys=[
+        "requirement", "info_complete", "next_node", "clarification",
+        "clarification_options",
+        "search_info", "template_code", "template_info",
+        "ppt_outline", "ppt_schema", "ppt_result",
+    ],
+    interrupt_payload=lambda v: {
+        "clarification": v.get("clarification", ""),
+        "clarification_options": v.get("clarification_options", []),
+    },
+    compose_resume_response=_compose_resume_response,
+    resume_state_key="clarification_response",
+    result_key="ppt_result",
+))
