@@ -45,11 +45,10 @@ export function KnowledgeListPage() {
   return (
     <>
       <DocumentUploadDialog open={uploadOpen} onClose={() => { setUploadOpen(false); void load(); }} />
-      <button type="button" onClick={() => setUploadOpen(true)} className="fixed right-6 top-5 z-10 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground">上传文档</button>
       <section className="p-5">
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-2xl font-semibold">知识库</h1>
-        <div className="relative w-64">
+        <div className="relative w-64 shrink-0">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <input
             aria-label="搜索文档"
@@ -83,6 +82,13 @@ export function KnowledgeListPage() {
           className="rounded-md border p-2"
         >
           <RefreshCw className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setUploadOpen(true)}
+          className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground"
+        >
+          上传文档
         </button>
       </div>
       <table className="w-full text-left text-sm">

@@ -10,6 +10,7 @@ describe("knowledge document list", () => {
     localStorage.setItem("know-agent.auth", JSON.stringify({ token: "token", user: { name: "u", roles: [] } }));
     render(<MemoryRouter><AuthProvider><KnowledgeListPage /></AuthProvider></MemoryRouter>);
     expect(screen.getByRole("searchbox")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传文档" })).not.toHaveClass("fixed");
     expect(screen.getByRole("button", { name: /刷新/i })).toBeInTheDocument();
     expect(screen.getByRole("combobox")).toBeInTheDocument();
     expect(await screen.findByText("VECTOR_STORED")).toHaveClass("text-emerald-700");
