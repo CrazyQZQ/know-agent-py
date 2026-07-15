@@ -388,7 +388,18 @@ let aiText = "";
 
 ### 7.1 列出可用 Graph `GET /list-graphs`
 
-**响应**：`["ppt_build"]`
+**响应**：
+```json
+[
+  {"name": "ppt_build", "title": "PPT 生成", "description": "根据需求生成 PPT"}
+]
+```
+
+| 字段 | 说明 |
+|---|---|
+| `name` | graph 标识，传给 `graph_run_sse` / `graph_resume_sse` 的 `graphName` |
+| `title` | 前端展示名 |
+| `description` | graph 说明 |
 
 ### 7.2 启动 PPT 生成（SSE）`POST /graph_run_sse`
 
@@ -407,7 +418,7 @@ let aiText = "";
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `graphName` | string | 是 | 固定 `ppt_build` |
+| `graphName` | string | 是 | 已注册 graph 的 `name`（当前 `ppt_build`），不存在返回 404 |
 | `threadId` | string | 是 | 会话 ID |
 | `newMessage.content` | string | 否 | PPT 需求描述（`inputs` 为空时用） |
 | `inputs` | object | 否 | 直接传入 graph 输入（优先于 newMessage） |
@@ -417,10 +428,10 @@ let aiText = "";
 | event | data（JSON 字符串） | 说明 |
 |---|---|---|
 | `update` | `{ "node": "requirement", "values": { ... } }` | 节点执行完成，`values` 为 state 子集 |
-| `interrupt` | `{ "next": ["clarification"], "clarification": "请补充..." }` | 需求不完整，等待用户补充 |
-| `done` | `{ "ppt_result": "https://oss.../output.pptx" }` | 生成完成，返回 pptx 下载地址 |
+| `interrupt` | `{ "next": ["clarification"], "clarification": "请补充...", "clarification_options": [...] }` | 需求不完整，等待用户补充；`clarification_options` 为结构化建议选项 |
+| `done` | `{ "result": "https://oss.../output.pptx" }` | 生成完成，返回结果地址 |
 
-`values` 可能包含的字段：`requirement` / `info_complete` / `next_node` / `clarification` / `search_info` / `template_code` / `template_info` / `ppt_outline` / `ppt_schema` / `ppt_result`
+`values` 可能包含的字段：`requirement` / `info_complete` / `next_node` / `clarification` / `clarification_options` / `search_info` / `template_code` / `template_info` / `ppt_outline` / `ppt_schema` / `ppt_result`
 
 ### 7.3 恢复 PPT 生成（SSE）`POST /graph_resume_sse`
 
@@ -436,6 +447,32 @@ let aiText = "";
 ```
 
 **响应**：SSE 流，事件同 7.2（`update` / `interrupt` / `done`）。
+
+### 7.4 查询 Graph 流程拓扑 `GET /graph_topology/{name}`
+
+返回指定 graph 的流程节点列表与 mermaid 流程图，供前端渲染流程可视化。`name` 不存在返回 404。
+
+**响应**：
+```json
+{
+  "nodes": [
+    {"id": "requirement", "name": "requirement"},
+    {"id": "clarification", "name": "clarification"},
+    {"id": "search", "name": "search"},
+    {"id": "template_select", "name": "template_select"},
+    {"id": "template_info", "name": "template_info"},
+    {"id": "outline", "name": "outline"},
+    {"id": "schema", "name": "schema"},
+    {"id": "render", "name": "render"}
+  ],
+  "mermaid": "graph TD; ..."
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `nodes` | 业务节点列表（已过滤 `__start__`/`__end__` 虚拟节点），每项含 `id` 与 `name` |
+| `mermaid` | 可直接渲染的 mermaid 流程图字符串 |
 
 ---
 
