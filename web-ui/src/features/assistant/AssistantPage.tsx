@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatMessageRow } from "@/components/chat/ChatMessageRow";
 import { ToolApproval } from "@/components/chat/ToolApproval";
 import { useAuth } from "@/features/auth/AuthProvider";
-import { getAssistantHistory, resumeAssistant, runAssistant, type AssistantMessage } from "./assistant-api";
+import { createAssistantSession, getAssistantHistory, resumeAssistant, runAssistant, type AssistantMessage } from "./assistant-api";
 
 export function AssistantPage() {
   const { auth } = useAuth();
   const { threadId } = useParams<{ threadId?: string }>();
+  const navigate = useNavigate();
   const user = auth?.user.name ?? "anonymous";
   const token = auth?.token ?? "";
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
@@ -17,10 +18,12 @@ export function AssistantPage() {
   const [streaming, setStreaming] = useState(false);
   const [approval, setApproval] = useState<{ id: string; title: string; description?: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const skipHistoryThreadRef = useRef<string | null>(null);
 
   useEffect(() => {
     setApproval(null);
     if (!threadId) { setMessages([]); return; }
+    if (skipHistoryThreadRef.current === threadId) { skipHistoryThreadRef.current = null; return; }
     void getAssistantHistory(user, threadId, token).then((rows) => setMessages(rows.map((row) => ({ ...row, createdAt: row.createdAt ?? Date.now() }))));
   }, [threadId, token, user]);
 
@@ -32,7 +35,7 @@ export function AssistantPage() {
   };
 
   async function send(content: string) {
-    if (!threadId || streaming) return;
+    if (streaming) return;
     const history = messages;
     setMessages((current) => [...current, { role: "user", content, createdAt: Date.now() }]);
     setDraft("");
@@ -41,8 +44,16 @@ export function AssistantPage() {
     abortRef.current = controller;
     let answer = "";
     try {
+      let targetThreadId = threadId;
+      if (!targetThreadId) {
+        const created = await createAssistantSession(user, token);
+        if (controller.signal.aborted) return;
+        targetThreadId = created.thread_id;
+        skipHistoryThreadRef.current = targetThreadId;
+        navigate(`/assistant/${targetThreadId}`, { replace: true });
+      }
       await runAssistant({
-        user, token, threadId, messages: history, content, signal: controller.signal,
+        user, token, threadId: targetThreadId, messages: history, content, signal: controller.signal,
         onEvent: (event) => {
           if (event.event === "message") {
             answer += event.data;
@@ -97,6 +108,6 @@ export function AssistantPage() {
         {!threadId ? <div className="flex min-h-[55vh] items-center justify-center text-sm text-muted-foreground">从左侧新建或选择一个对话</div> : null}
       </div>
     </div>
-    <div className="px-4 pb-4 md:px-8"><ChatComposer value={draft} onChange={setDraft} onSend={(value) => void send(value)} isStreaming={streaming} onStop={stop} disabled={!threadId} /></div>
+    <div className="px-4 pb-4 md:px-8"><ChatComposer value={draft} onChange={setDraft} onSend={(value) => void send(value)} isStreaming={streaming} onStop={stop} /></div>
   </section>;
 }

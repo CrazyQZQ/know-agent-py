@@ -41,7 +41,7 @@ export function AppSidebar({ user, token = "", onLogout, onToggleTheme, mobileOp
     finally { setLoading(false); }
   }, [isAssistant, token, user.name]);
 
-  useEffect(() => { void loadSessions(); }, [loadSessions]);
+  useEffect(() => { void loadSessions(); }, [activeId, loadSessions]);
 
   async function newConversation() {
     const created = await createAssistantSession(user.name, token);

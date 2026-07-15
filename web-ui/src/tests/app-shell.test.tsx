@@ -27,6 +27,7 @@ describe("AppShell", () => {
     expect(await screen.findByRole("button", { name: "会话一" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "新建对话" }));
     await waitFor(() => expect(assistantMocks.create).toHaveBeenCalledWith("u", "token"));
+    await waitFor(() => expect(assistantMocks.list).toHaveBeenCalledTimes(2));
   });
 
   it("shows only the three Know-Agent primary modules", () => {
