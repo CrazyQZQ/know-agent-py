@@ -137,7 +137,16 @@ describe("workflow registry integration", () => {
         event: "update",
         data: JSON.stringify({ node: "requirement", values: { requirement: "制作季度产品汇报" } }),
       });
-      options.onEvent({ event: "done", data: JSON.stringify({ result: "/files/report.pptx" }) });
+      options.onEvent({ event: "done", data: JSON.stringify({
+        result: "/files/report.pptx",
+        presentation: {
+          kind: "artifact",
+          headline: "PPT 已生成",
+          body: "可以下载生成的演示文稿。",
+          artifactUrl: "/files/report.pptx",
+          artifactLabel: "下载演示文稿",
+        },
+      }) });
     });
     renderWorkflowRun();
 
@@ -202,10 +211,24 @@ describe("workflow registry integration", () => {
         event: "update",
         data: JSON.stringify({
           node: "collect",
-          values: { summary: "数据采集完成", artifact_result: "/files/report.csv" },
+          values: { internal: { records: 42 } },
+          presentation: {
+            kind: "message",
+            headline: "采集完成",
+            body: "数据采集完成",
+          },
         }),
       });
-      options.onEvent({ event: "done", data: JSON.stringify({ result: "/files/report.csv" }) });
+      options.onEvent({ event: "done", data: JSON.stringify({
+        result: "/files/report.csv",
+        presentation: {
+          kind: "artifact",
+          headline: "报告已生成",
+          body: "可以下载生成的报告。",
+          artifactUrl: "/files/report.csv",
+          artifactLabel: "下载结果",
+        },
+      }) });
     });
     renderWorkflowRun("/workflows/report_builder/thread-2");
 
@@ -223,5 +246,58 @@ describe("workflow registry integration", () => {
     expect(streamSseMock).toHaveBeenCalledWith(expect.objectContaining({
       body: expect.objectContaining({ graphName: "report_builder" }),
     }));
+  });
+
+  it("keeps textarea, single-select, and multi-select interrupt controls", async () => {
+    streamSseMock
+      .mockImplementationOnce(async (options: StreamSseOptions) => {
+        options.onEvent({
+          event: "interrupt",
+          data: JSON.stringify({
+            id: "interrupt-1",
+            type: "form",
+            title: "补充生成信息",
+            description: "请补充以下信息",
+            fields: [
+              { id: "style", type: "single_select", label: "风格", options: [{ label: "科技感", value: "tech" }], required: true },
+              { id: "topics", type: "multi_select", label: "重点", options: [{ label: "增长", value: "growth" }, { label: "商业化", value: "monetization" }], required: true },
+              { id: "notes", type: "textarea", label: "补充说明", options: [], required: false },
+            ],
+            actions: [
+              { id: "submit", label: "继续生成", style: "primary" },
+              { id: "cancel", label: "终止流程", style: "ghost" },
+            ],
+          }),
+        });
+      })
+      .mockResolvedValueOnce(undefined);
+    renderWorkflowRun();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+      target: { value: "制作季度汇报" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    const submit = await screen.findByRole("button", { name: "继续生成" });
+    expect(submit).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "补充说明" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "科技感" }));
+    fireEvent.click(screen.getByRole("button", { name: "增长" }));
+    fireEvent.click(screen.getByRole("button", { name: "商业化" }));
+    expect(screen.getByRole("button", { name: "增长" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "商业化" })).toHaveAttribute("aria-pressed", "true");
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(streamSseMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      path: "/v1/graph_resume_sse",
+      body: expect.objectContaining({
+        answers: [
+          { id: "style", value: "tech", label: "科技感" },
+          { id: "topics", value: ["growth", "monetization"], label: "增长、商业化" },
+          { id: "notes", value: "", label: "" },
+        ],
+      }),
+    })));
   });
 });

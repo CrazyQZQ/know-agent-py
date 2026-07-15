@@ -21,6 +21,7 @@ REQUIREMENT_GRAPH_PROMPT = """## 角色
   - id 取 topic/pages/style/audience 之一
   - question 写一句面向用户的提问
   - options 给 2-4 个具体建议选项（页数给数值档位、风格给具体风格名、受众给典型人群），纯开放问题（如主题）可留空
+  - 若某个维度允许选择多个选项，设置 multiple=true；单选设置 multiple=false
   - allow_custom 默认 true（允许用户自行输入）
   - 已齐全的维度不要进 items
 

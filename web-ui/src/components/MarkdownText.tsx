@@ -20,7 +20,7 @@ export function MarkdownText({ children, className }: MarkdownTextProps) {
       className={cn(
         "markdown-content prose max-w-none break-words dark:prose-invert",
         "prose-headings:mb-2 prose-headings:mt-4 prose-headings:font-semibold",
-        "prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5",
+        "prose-p:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-li:leading-6",
         "prose-pre:my-3 prose-pre:overflow-x-auto prose-pre:rounded-md",
         "prose-code:before:content-none prose-code:after:content-none",
         "prose-a:text-blue-600 prose-a:underline prose-a:underline-offset-2",

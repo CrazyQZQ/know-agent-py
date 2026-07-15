@@ -17,7 +17,7 @@ class ResumeAnswer(BaseModel):
     """单个澄清维度的用户回答（结构化提交）."""
 
     id: str
-    value: str                       # 选中的 option.value 或自由输入文本
+    value: str | list[str]           # 选中的 option.value、多个 option.value 或自由输入文本
     label: str | None = None         # 选中的 option.label 或自由输入原文，便于 LLM 理解
 
 

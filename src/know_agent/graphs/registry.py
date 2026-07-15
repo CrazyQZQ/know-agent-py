@@ -24,9 +24,9 @@ class GraphRegistration:
     description: str
     factory: Callable[[], Any]                               # 纯构建函数，返回 compiled graph
     state_keys: list[str]                                    # 透传给前端的 state 子集
-    interrupt_payload: Callable[[dict], dict]                # 构造 interrupt 事件 data
-    compose_resume_response: Callable[[GraphResumeRequest], str]  # resume 请求 -> 写入文本
-    resume_state_key: str | None                             # 写进哪个 state 字段；None=只写 messages
+    present_update: Callable[[str, dict], dict | None]        # 节点 state -> 通用前端展示
+    present_done: Callable[[Any, dict], dict | None]          # 最终结果 -> 通用前端展示
+    compose_resume_value: Callable[[GraphResumeRequest], Any] # resume 请求 -> Command.resume
     messages_state_key: str | None                           # 完成时写 assistant 历史；None=不写
     result_key: str                                          # done 事件取值用的 state 字段
 

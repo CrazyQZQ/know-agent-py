@@ -40,7 +40,10 @@ export function WorkflowsPage() {
       ) : null}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {graphs.map((graph) => (
-          <article key={graph.name} className="rounded-lg border border-border p-4">
+          <article
+            key={graph.name}
+            className="rounded-lg border border-border p-4 shadow-sm transition-[transform,box-shadow,border-color] duration-200 ease-out hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none"
+          >
             <h2 className="font-medium">{graph.title}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{graph.description}</p>
             <Link

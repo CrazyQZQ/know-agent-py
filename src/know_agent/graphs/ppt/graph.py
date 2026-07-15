@@ -2,7 +2,7 @@
 
 工作流：
   START -> requirement -> (search | clarification)
-          clarification -> requirement（interrupt_before，人在回路）
+          clarification -> requirement（原生 interrupt，人在回路）
           search -> template_select -> template_info -> outline -> schema -> render -> END
 """
 
@@ -20,6 +20,11 @@ from know_agent.graphs.ppt.nodes import (
     render_node,
     requirement_node,
     template_info_node,
+)
+from know_agent.graphs.ppt.presentation import (
+    build_interrupt_form,
+    present_done,
+    present_update,
 )
 from know_agent.graphs.ppt.state import PptState
 from know_agent.graphs.registry import GraphRegistration, register_graph
@@ -53,30 +58,37 @@ def build_ppt_graph():
     workflow.add_edge("render", END)
     workflow.add_edge("clarification", "requirement")
 
-    return workflow.compile(
-        checkpointer=get_checkpointer(),
-        interrupt_before=["clarification"],
-    )
+    return workflow.compile(checkpointer=get_checkpointer())
 
 
 def _compose_answers(answers: list[ResumeAnswer]) -> str:
-    """把结构化回答组装成自然语言文本，供 clarification_node 拼回 input."""
+    """把结构化回答组装成自然语言文本，供 clarification_node 拼回 input。"""
     parts = []
-    for a in answers:
-        text = (a.label or a.value).strip()
+    for answer in answers:
+        if answer.label:
+            text = answer.label.strip()
+        elif isinstance(answer.value, list):
+            text = "、".join(item.strip() for item in answer.value if item.strip())
+        else:
+            text = answer.value.strip()
         if text:
-            parts.append(f"{a.id}：{text}")
+            parts.append(f"{answer.id}：{text}")
     return "\n".join(parts)
 
 
-def _compose_resume_response(req: GraphResumeRequest) -> str:
-    """resume 请求 -> 要写入 state 的文本：优先 answers，回退纯文本，都空抛错."""
+def _compose_resume_value(req: GraphResumeRequest) -> str:
+    """把公开 resume 请求转换为原生 Command.resume 值。"""
     if req.answers:
-        return _compose_answers(req.answers)
-    resp = req.clarificationResponse or ""
-    if not resp:
+        response = _compose_answers(req.answers)
+    else:
+        response = (req.clarificationResponse or "").strip()
+    if not response:
         raise ValueError("answers 或 clarificationResponse 至少需提供一个非空值")
-    return resp
+    return response
+
+
+# 兼容已有测试和内部调用名称，实际表单协议只有一个实现。
+_interrupt_payload = build_interrupt_form
 
 
 register_graph(GraphRegistration(
@@ -90,12 +102,9 @@ register_graph(GraphRegistration(
         "search_info", "template_code", "template_info",
         "ppt_outline", "ppt_schema", "ppt_result",
     ],
-    interrupt_payload=lambda v: {
-        "clarification": v.get("clarification", ""),
-        "clarification_options": v.get("clarification_options", []),
-    },
-    compose_resume_response=_compose_resume_response,
-    resume_state_key="clarification_response",
+    present_update=present_update,
+    present_done=present_done,
+    compose_resume_value=_compose_resume_value,
     messages_state_key="messages",
     result_key="ppt_result",
 ))

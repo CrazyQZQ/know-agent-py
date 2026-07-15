@@ -25,6 +25,7 @@ class ClarificationItem(BaseModel):
         description="建议选项 2-4 个；纯开放问题可留空",
     )
     allow_custom: bool = Field(default=True, description="是否允许用户自行输入")
+    multiple: bool = Field(default=False, description="是否允许选择多个选项")
     required: bool = Field(default=True, description="是否必填")
 
 

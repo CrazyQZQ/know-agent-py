@@ -9,6 +9,7 @@ GET  /graph_topology/{name}  返回 graph 流程节点 + mermaid 图
 import json
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.types import Command
 from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
@@ -29,7 +30,7 @@ def _config(thread_id: str) -> dict:
 def _stream(reg, inputs, config, last_event_id: int | None = None):
     """通用流式：yield 节点更新 + interrupt/done，带 id + 缓存支持断线重连.
 
-    读 reg 的声明式 metadata（state_keys / interrupt_payload / result_key），
+    读 reg 的声明式 metadata（state_keys / presentation adapters / result_key），
     不认识任何具体 graph 字段。用同步 graph.stream（PostgresSaver 是同步 checkpointer）。
     """
     graph = registry.get_compiled_graph(reg.name)
@@ -41,35 +42,59 @@ def _stream(reg, inputs, config, last_event_id: int | None = None):
         return
     # 新流：stream(inputs) 首次运行，stream(None) 从 interrupt 处继续
     for output in graph.stream(inputs, config, stream_mode="updates"):
+        interrupts = output.get("__interrupt__")
+        if interrupts:
+            current = interrupts[0]
+            value = current.value
+            payload = value if isinstance(value, dict) else {
+                "type": "text",
+                "description": str(value),
+            }
+            event = {
+                "event": "interrupt",
+                "data": json.dumps({"id": current.id, **payload}, ensure_ascii=False),
+            }
+            eid = sse_store.append(thread_id, event)
+            yield {**event, "id": str(eid)}
+            sse_store.mark_done(thread_id)
+            return
         for node, update in output.items():
+            if node.startswith("__"):
+                continue
             values = {k: update[k] for k in reg.state_keys if k in update}
+            presentation = reg.present_update(node, values)
+            data = {"node": node, "values": values}
+            if presentation is not None:
+                data["presentation"] = presentation
             event = {
                 "event": "update",
-                "data": json.dumps({"node": node, "values": values}, ensure_ascii=False),
+                "data": json.dumps(data, ensure_ascii=False),
             }
             eid = sse_store.append(thread_id, event)
             yield {**event, "id": str(eid)}
     state = graph.get_state(config)
-    if state.next:
-        payload = {"next": state.next, **reg.interrupt_payload(state.values)}
-        event = {
-            "event": "interrupt",
-            "data": json.dumps(payload, ensure_ascii=False),
-        }
-    else:
-        result = state.values.get(reg.result_key, "")
-        # 仅 graph 显式声明消息 state 时记录历史，避免通用路由假设 state schema。
-        if reg.messages_state_key:
-            graph.update_state(config, {
-                reg.messages_state_key: [AIMessage(content=result or "工作流已完成")],
-            })
-        event = {
-            "event": "done",
-            "data": json.dumps({"result": result}, ensure_ascii=False),
-        }
+    result = state.values.get(reg.result_key, "")
+    # 仅 graph 显式声明消息 state 时记录历史，避免通用路由假设 state schema。
+    if reg.messages_state_key:
+        graph.update_state(config, {
+            reg.messages_state_key: [AIMessage(content=result or "工作流已完成")],
+        })
+    data = {"result": result}
+    presentation = reg.present_done(result, state.values)
+    if presentation is not None:
+        data["presentation"] = presentation
+    event = {
+        "event": "done",
+        "data": json.dumps(data, ensure_ascii=False),
+    }
     eid = sse_store.append(thread_id, event)
     yield {**event, "id": str(eid)}
     sse_store.mark_done(thread_id)
+
+
+def _resume_command(reg, req: GraphResumeRequest) -> Command:
+    """把公开 resume 请求转换为 LangGraph 原生 Command。"""
+    return Command(resume=reg.compose_resume_value(req))
 
 
 @router.get("/list-graphs", tags=["graph"])
@@ -121,12 +146,7 @@ async def graph_resume_sse(request: Request, req: GraphResumeRequest):
     if last_id is not None:
         return EventSourceResponse(_stream(reg, None, config, last_event_id=last_id))
     try:
-        resp = reg.compose_resume_response(req)
+        command = _resume_command(reg, req)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    graph = registry.get_compiled_graph(reg.name)
-    update = {"messages": [HumanMessage(content=resp)]}
-    if reg.resume_state_key:
-        update[reg.resume_state_key] = resp
-    graph.update_state(config, update)
-    return EventSourceResponse(_stream(reg, None, config))
+    return EventSourceResponse(_stream(reg, command, config))

@@ -7,8 +7,10 @@ import json
 import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.types import interrupt
 from loguru import logger
 
+from know_agent.graphs.ppt.presentation import build_interrupt_form
 from know_agent.graphs.ppt.prompts import REQUIREMENT_GRAPH_PROMPT
 from know_agent.graphs.ppt.render import render_ppt
 from know_agent.graphs.ppt.schemas import RequirementClarification
@@ -51,6 +53,71 @@ TEMPLATE_INFO = {
 }
 
 
+def _fallback_requirement(content: str) -> dict | None:
+    """解析模型未通过 structured output 时返回的 JSON 文本。"""
+    try:
+        payload = json.loads(content)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("complete") is not True:
+        items = payload.get("items") or payload.get("clarification_options") or []
+        normalized_items = []
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            question = str(item.get("question") or item.get("label") or "").strip()
+            if not question:
+                continue
+            options = []
+            for option in item.get("options") or []:
+                if isinstance(option, dict):
+                    label = str(option.get("label") or option.get("value") or "").strip()
+                    value = str(option.get("value") or option.get("label") or "").strip()
+                else:
+                    label = value = str(option).strip()
+                if label:
+                    options.append({"label": label, "value": value})
+            normalized_items.append({
+                "id": str(item.get("id") or f"clarification_{index + 1}"),
+                "question": question,
+                "options": options,
+                "multiple": bool(item.get("multiple", item.get("allow_multiple", False))),
+                "required": item.get("required", True) is not False,
+                "allow_custom": bool(item.get("allow_custom", not options)),
+            })
+        clarification = str(payload.get("clarification") or "").strip()
+        if normalized_items:
+            clarification = "\n".join(f"- {item['question']}" for item in normalized_items)
+        return {
+            "requirement": "",
+            "info_complete": False,
+            "next_node": "clarification",
+            "clarification": clarification or "请补充更多需求信息",
+            "clarification_options": normalized_items,
+        }
+    requirement = payload.get("requirement", "")
+    if isinstance(requirement, dict):
+        labels = {"topic": "主题", "pages": "页数", "style": "风格", "audience": "受众"}
+        summary = "\n".join(
+            f"{labels.get(key, key)}：{value}"
+            for key, value in requirement.items()
+            if value not in (None, "")
+        )
+    else:
+        summary = str(requirement).strip()
+    if not summary:
+        return None
+    return {
+        "requirement": summary,
+        "info_complete": True,
+        "next_node": "search",
+        "clarification": "",
+        "clarification_options": [],
+    }
+
+
 def requirement_node(state: dict) -> dict:
     """需求澄清节点：判断信息是否完整，决定下一步 search 或 clarification.
 
@@ -87,6 +154,10 @@ def requirement_node(state: dict) -> dict:
         logger.warning("requirement_node: structured output 失败，降级纯文本: {}", e)
         response = chat.invoke(messages)
         content = (response.content or "").strip()
+        fallback_requirement = _fallback_requirement(content)
+        if fallback_requirement:
+            logger.info("requirement_node: fallback JSON complete=True, next=search")
+            return fallback_requirement
         logger.info("requirement_node: fallback incomplete, next=clarification")
         return {
             "requirement": "",
@@ -98,12 +169,13 @@ def requirement_node(state: dict) -> dict:
 
 
 def clarification_node(state: dict) -> dict:
-    """澄清节点：用户回复后合并到 input（interrupt_before 在执行此节点前暂停等回复）."""
-    resp = state.get("clarification_response", "")
-    if resp:
-        original = state.get("input", "")
-        return {"input": original + "\n\n【用户补充信息】" + resp}
-    return {}
+    """通过原生 interrupt 请求补充信息，并在恢复后合并到 input。"""
+    resp = interrupt(build_interrupt_form(state))
+    text = str(resp or "").strip()
+    if not text:
+        return {}
+    original = state.get("input", "")
+    return {"input": original + "\n\n【用户补充信息】\n" + text}
 
 
 def template_info_node(state: dict) -> dict:
