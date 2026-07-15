@@ -20,7 +20,7 @@ export function AppRouter() {
   return <Routes>
     <Route path="/login" element={<LoginPage />} />
     <Route element={<ProtectedRoute />}>
-      <Route element={auth ? <AppShell user={auth.user} onLogout={() => void logout()} onToggleTheme={toggle}><Outlet /></AppShell> : <Navigate to="/login" replace />}>
+      <Route element={auth ? <AppShell user={auth.user} token={auth.token} onLogout={() => void logout()} onToggleTheme={toggle}><Outlet /></AppShell> : <Navigate to="/login" replace />}>
         <Route path="/assistant/:threadId?" element={<AssistantPage />} />
         <Route path="/workflows" element={<WorkflowsPage />} />
         <Route path="/workflows/:workflowId/:threadId?" element={<WorkflowRunPage />} />
