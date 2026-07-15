@@ -4,7 +4,6 @@ import App from "./app/App";
 import { AuthProvider } from "./features/auth/AuthProvider";
 import { BrowserRouter } from "react-router-dom";
 import "./globals.css";
-import "./i18n";
 
 // `crypto.randomUUID` is only defined in secure contexts (HTTPS or localhost).
 // LAN access over plain HTTP leaves it undefined, which crashes components that

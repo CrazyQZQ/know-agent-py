@@ -1,5 +1,3 @@
-import i18n, { currentLocale } from "@/i18n";
-
 const LOW_INFORMATION_TITLE_PREVIEWS = new Set([
   "hi",
   "hello",
@@ -75,7 +73,10 @@ const relativeTimeFormatters = new Map<string, Intl.RelativeTimeFormat>();
 const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
 function activeLocale(locale?: string): string {
-  return locale || i18n.resolvedLanguage || i18n.language || currentLocale();
+  if (locale) return locale;
+  return typeof navigator !== "undefined" && navigator.language
+    ? navigator.language
+    : "zh-CN";
 }
 
 function relativeTimeFormatter(locale: string): Intl.RelativeTimeFormat {

@@ -58,8 +58,11 @@ def _stream(reg, inputs, config, last_event_id: int | None = None):
         }
     else:
         result = state.values.get(reg.result_key, "")
-        # 记录 assistant 回复到 messages，供会话历史拉取
-        graph.update_state(config, {"messages": [AIMessage(content=result or "工作流已完成")]})
+        # 仅 graph 显式声明消息 state 时记录历史，避免通用路由假设 state schema。
+        if reg.messages_state_key:
+            graph.update_state(config, {
+                reg.messages_state_key: [AIMessage(content=result or "工作流已完成")],
+            })
         event = {
             "event": "done",
             "data": json.dumps({"result": result}, ensure_ascii=False),

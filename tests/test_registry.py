@@ -23,6 +23,7 @@ def _make_reg(name="test_graph", factory=None):
         interrupt_payload=lambda v: {"x": v.get("x", "")},
         compose_resume_response=lambda req: "resp",
         resume_state_key="resp_key",
+        messages_state_key="messages",
         result_key="result",
     )
 

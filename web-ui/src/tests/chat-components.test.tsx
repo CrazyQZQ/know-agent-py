@@ -27,7 +27,7 @@ describe("shared chat components", () => {
 
   it("renders assistant content through markdown and shows dots while waiting for the first token", () => {
     const { rerender } = render(<ChatMessageRow role="assistant" content="**bold**" createdAt={Date.now()} />);
-    expect(screen.getByText("**bold**")).toBeInTheDocument();
+    expect(screen.getByText("bold").tagName).toBe("STRONG");
     rerender(<ChatMessageRow role="assistant" content="" createdAt={Date.now()} isStreaming />);
     expect(screen.getByLabelText("Assistant typing")).toBeInTheDocument();
     expect(screen.queryByText("loading")).not.toBeInTheDocument();

@@ -3,14 +3,27 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { apiRequest } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/format";
+
+type DocumentSegment = {
+  id?: string | number;
+  content?: string;
+};
+
+type DocumentDetail = {
+  title?: string;
+  status?: string;
+  updated_at?: string | number | null;
+  segments?: DocumentSegment[];
+};
+
 export function DocumentDetailPage() {
   const { auth } = useAuth();
   const { documentId } = useParams();
   const navigate = useNavigate();
-  const [doc, setDoc] = useState<any>(null);
+  const [doc, setDoc] = useState<DocumentDetail | null>(null);
   useEffect(() => {
     if (documentId)
-      void apiRequest(`/v1/api/document/${documentId}`, {
+      void apiRequest<DocumentDetail>(`/v1/api/document/${documentId}`, {
         token: auth?.token,
       }).then(setDoc);
   }, [auth?.token, documentId]);
@@ -42,11 +55,11 @@ export function DocumentDetailPage() {
             <dt>状态</dt>
             <dd>{doc.status}</dd>
             <dt>更新时间</dt>
-        <dd>{formatDateTime(doc.updated_at)}</dd>
+            <dd>{formatDateTime(doc.updated_at)}</dd>
           </dl>
           <h2 className="mt-5 font-medium">分段</h2>
           <ol className="mt-2 space-y-2">
-            {(doc.segments ?? []).map((segment: any, i: number) => (
+            {(doc.segments ?? []).map((segment, i) => (
               <li key={segment.id ?? i} className="rounded border p-3 text-sm">
                 {segment.content}
               </li>

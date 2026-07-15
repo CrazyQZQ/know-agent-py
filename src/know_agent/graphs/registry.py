@@ -27,6 +27,7 @@ class GraphRegistration:
     interrupt_payload: Callable[[dict], dict]                # 构造 interrupt 事件 data
     compose_resume_response: Callable[[GraphResumeRequest], str]  # resume 请求 -> 写入文本
     resume_state_key: str | None                             # 写进哪个 state 字段；None=只写 messages
+    messages_state_key: str | None                           # 完成时写 assistant 历史；None=不写
     result_key: str                                          # done 事件取值用的 state 字段
 
 

@@ -96,5 +96,6 @@ register_graph(GraphRegistration(
     },
     compose_resume_response=_compose_resume_response,
     resume_state_key="clarification_response",
+    messages_state_key="messages",
     result_key="ppt_result",
 ))
