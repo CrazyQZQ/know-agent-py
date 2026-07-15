@@ -59,11 +59,6 @@ def build_ppt_graph():
     )
 
 
-def get_ppt_graph():
-    """兼容包装：Task 3 改完路由后删除（改用 registry.get_compiled_graph('ppt_build')）."""
-    return build_ppt_graph()
-
-
 def _compose_answers(answers: list[ResumeAnswer]) -> str:
     """把结构化回答组装成自然语言文本，供 clarification_node 拼回 input."""
     parts = []
