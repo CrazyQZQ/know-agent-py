@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { gsap } from "gsap";
 import { ArrowLeft, Check, CheckCircle2, Circle, Copy, Download, LoaderCircle, PanelRightClose, PanelRightOpen, XCircle } from "lucide-react";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
@@ -95,6 +96,7 @@ function WorkflowInterruptForm({ form, values, onChange, onSubmit, onCancel }: {
 
 function WorkflowRunMessage({ run, activeLabel, formValues, onFormChange, onFormSubmit, onFormCancel }: { run: ActiveRun; activeLabel?: string; formValues: Record<string, FormValue>; onFormChange: (id: string, value: FormValue) => void; onFormSubmit: () => void; onFormCancel: () => void }) {
   const [copied, setCopied] = useState(false);
+  const articleRef = useRef<HTMLElement | null>(null);
   const sourceBody = run.clarification?.question ?? run.presentation?.body ?? "";
   const [body, setBody] = useState(sourceBody);
   useEffect(() => {
@@ -111,6 +113,12 @@ function WorkflowRunMessage({ run, activeLabel, formValues, onFormChange, onForm
     }, 16);
     return () => window.clearInterval(timer);
   }, [sourceBody, run.clarification]);
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const animation = gsap.fromTo(article, { autoAlpha: 0, y: 10 }, { autoAlpha: 1, y: 0, duration: 0.22, ease: "power2.out" });
+    return () => { animation.kill(); };
+  }, []);
   const copy = async () => {
     if (!body || !(await copyTextToClipboard(body))) return;
     setCopied(true);
@@ -123,7 +131,7 @@ function WorkflowRunMessage({ run, activeLabel, formValues, onFormChange, onForm
           : <CheckCircle2 className="h-4 w-4 text-amber-600" />;
   const headline = run.clarification ? "需要补充信息" : run.presentation?.headline ?? STATUS_COPY[run.status];
   return (
-    <article className="flex w-full justify-start">
+    <article ref={articleRef} className="flex w-full justify-start">
       <div className="min-w-0 max-w-[min(92%,46rem)]">
         <div className="flex items-center gap-2 text-sm font-medium">
           {icon}<span>{headline}</span>
