@@ -14,6 +14,7 @@ class PptState(TypedDict, total=False):
     info_complete: bool
     next_node: str
     clarification: str
+    clarification_options: list[dict]
     clarification_response: str
     search_info: str
     template_code: str

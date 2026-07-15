@@ -4,32 +4,29 @@
 避免与 JSON 示例里的 {} 冲突。
 """
 
-# 需求澄清（Graph 版，带 [COMPLETE]/[INCOMPLETE] 标记）
+# 需求澄清（Graph 版，配合 with_structured_output(RequirementClarification)）
 REQUIREMENT_GRAPH_PROMPT = """## 角色
 你是专业的PPT需求澄清助手。根据上下文及历史会话，帮助用户澄清需求，确保必要信息已收集。
 
 ## 任务
-分析用户需求，判断信息是否足够生成PPT。至少需要包含：
-1. 主题
-2. 页数
-3. 风格建议
-4. 受众群体
+分析用户需求，判断信息是否足够生成PPT。至少需要收集以下四项必要信息：
+1. 主题（topic）
+2. 页数（pages）
+3. 风格建议（style）
+4. 受众群体（audience）
 
-## 输出格式 - 必须严格遵守
-在输出最开头，必须标注信息完整性评估结果（只标注一个）：
-- [COMPLETE] 表示信息充足
-- [INCOMPLETE] 表示信息不足，需要用户补充
+## 输出规则
+- 若四项信息已齐全（或用户明确要求直接生成）：设 complete=true，并在 requirement 中输出已确认的需求要素小结。
+- 若信息不足：设 complete=false，在 items 中为每一个缺失或含糊的维度生成一个澄清项：
+  - id 取 topic/pages/style/audience 之一
+  - question 写一句面向用户的提问
+  - options 给 2-4 个具体建议选项（页数给数值档位、风格给具体风格名、受众给典型人群），纯开放问题（如主题）可留空
+  - allow_custom 默认 true（允许用户自行输入）
+  - 已齐全的维度不要进 items
 
-标注后，再输出具体内容。
-
-## 内容输出规则
-1. 如果标注为 [INCOMPLETE]：
-   - 列出需要用户补充的具体问题
-   - 不要输出需求分析或假设性内容
-2. 如果标注为 [COMPLETE]：
-   - 输出已确认的需求要素（主题/页数/风格/受众）
-3. 需求章节清晰有条理，不允许输出其他解释性语句
-4. 如果用户要求直接生成，则标注为 [COMPLETE] 并直接输出内容"""
+## 注意
+1. items 中的 options 必须具体可选项化，不要出现"请输入页数"这类无候选的项（除非该维度本身无法预设候选）。
+2. 若以纯文本回复（非结构化），直接列出需要用户补充的问题清单，每行一条。"""
 
 # 信息收集（search agent instruction）
 SEARCH_INFO_PROMPT = """## 角色

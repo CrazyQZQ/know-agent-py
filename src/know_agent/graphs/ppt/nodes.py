@@ -1,4 +1,4 @@
-"""PPT graph 普通节点 — requirement / clarification / template_info / render.
+"""PPT graph 普通节点 - requirement / clarification / template_info / render.
 
 对应源项目 RequirementNode / ClarificationNode / RenderNode + template_info 内联节点。
 """
@@ -11,6 +11,7 @@ from loguru import logger
 
 from know_agent.graphs.ppt.prompts import REQUIREMENT_GRAPH_PROMPT
 from know_agent.graphs.ppt.render import render_ppt
+from know_agent.graphs.ppt.schemas import RequirementClarification
 from know_agent.llm.chat import get_chat_model
 
 # 模板信息（对应源项目 PptBuildGraph 中硬编码的 ai 模板）
@@ -51,21 +52,49 @@ TEMPLATE_INFO = {
 
 
 def requirement_node(state: dict) -> dict:
-    """需求澄清节点：判断信息是否完整，决定下一步 search 或 clarification."""
+    """需求澄清节点：判断信息是否完整，决定下一步 search 或 clarification.
+
+    用 with_structured_output 产出结构化澄清项（含建议选项），供前端渲染
+    选项卡片 + 自由输入框。structured output 失败时降级为纯文本提问（无选项）。
+    """
     chat = get_chat_model()
     input_text = state.get("input", "")
-    response = chat.invoke([SystemMessage(REQUIREMENT_GRAPH_PROMPT), HumanMessage(input_text)])
-    output = response.content or ""
-    info_complete = output.strip().startswith("[COMPLETE]")
-    content = re.sub(r"^\[(COMPLETE|INCOMPLETE)\]\s*", "", output.strip())
-    next_node = "search" if info_complete else "clarification"
-    logger.info("requirement_node: info_complete={}, next={}", info_complete, next_node)
-    return {
-        "requirement": content,
-        "info_complete": info_complete,
-        "next_node": next_node,
-        "clarification": "" if info_complete else content,
-    }
+    messages = [SystemMessage(REQUIREMENT_GRAPH_PROMPT), HumanMessage(input_text)]
+
+    try:
+        result = chat.with_structured_output(RequirementClarification).invoke(messages)
+        if result.complete:
+            logger.info("requirement_node: complete=True, next=search")
+            return {
+                "requirement": result.requirement,
+                "info_complete": True,
+                "next_node": "search",
+                "clarification": "",
+                "clarification_options": [],
+            }
+        items = [item.model_dump() for item in result.items]
+        clarification_text = "\n".join(f"- {it.question}" for it in result.items) or "请补充更多信息"
+        logger.info("requirement_node: complete=False, items={}, next=clarification", len(items))
+        return {
+            "requirement": "",
+            "info_complete": False,
+            "next_node": "clarification",
+            "clarification": clarification_text,
+            "clarification_options": items,
+        }
+    except Exception as e:
+        # 降级：structured output 失败时回退纯文本提问，无结构化选项
+        logger.warning("requirement_node: structured output 失败，降级纯文本: {}", e)
+        response = chat.invoke(messages)
+        content = (response.content or "").strip()
+        logger.info("requirement_node: fallback incomplete, next=clarification")
+        return {
+            "requirement": "",
+            "info_complete": False,
+            "next_node": "clarification",
+            "clarification": content or "请补充更多需求信息",
+            "clarification_options": [],
+        }
 
 
 def clarification_node(state: dict) -> dict:

@@ -1,27 +1,28 @@
-"""graph 路由 — 对应源项目 GraphExecutionController.
+"""graph 路由 - 对应源项目 GraphExecutionController.
 
 POST /graph_run_sse   首次运行（输入需求），检测 interrupt_before clarification
-POST /graph_resume_sse 用户补充信息后恢复
+POST /graph_resume_sse 用户补充信息后恢复（支持结构化 answers 或纯文本）
 GET  /list-graphs     列出可用 graph
 """
 
 import json
 
 from langchain_core.messages import AIMessage, HumanMessage
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
 from know_agent.configuration import get_settings
 from know_agent.core.limiter import limiter
 from know_agent.core.sse_store import parse_last_event_id, sse_store
 from know_agent.graphs.ppt.graph import GRAPH_NAME, get_ppt_graph
-from know_agent.schemas.graph import GraphResumeRequest, GraphRunRequest
+from know_agent.schemas.graph import GraphResumeRequest, GraphRunRequest, ResumeAnswer
 
 router = APIRouter()
 
 # SSE 输出中提取的 state key
 _STATE_KEYS = [
     "requirement", "info_complete", "next_node", "clarification",
+    "clarification_options",
     "search_info", "template_code", "template_info",
     "ppt_outline", "ppt_schema", "ppt_result",
 ]
@@ -33,6 +34,16 @@ def _extract_state(values: dict) -> dict:
 
 def _config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+
+
+def _compose_answers(answers: list[ResumeAnswer]) -> str:
+    """把结构化回答组装成自然语言文本，供 clarification_node 拼回 input."""
+    parts = []
+    for a in answers:
+        text = (a.label or a.value).strip()
+        if text:
+            parts.append(f"{a.id}：{text}")
+    return "\n".join(parts)
 
 
 def _stream(graph, inputs, config, last_event_id: int | None = None):
@@ -61,7 +72,11 @@ def _stream(graph, inputs, config, last_event_id: int | None = None):
         event = {
             "event": "interrupt",
             "data": json.dumps(
-                {"next": state.next, "clarification": state.values.get("clarification", "")},
+                {
+                    "next": state.next,
+                    "clarification": state.values.get("clarification", ""),
+                    "clarification_options": state.values.get("clarification_options", []),
+                },
                 ensure_ascii=False,
             ),
         }
@@ -102,14 +117,21 @@ async def graph_run_sse(request: Request, req: GraphRunRequest):
 @router.post("/graph_resume_sse", tags=["graph"])
 @limiter.limit(lambda: get_settings().rate_limit)
 async def graph_resume_sse(request: Request, req: GraphResumeRequest):
-    """用户补充澄清信息后恢复 graph（对应源项目 updateState + 继续）.支持 Last-Event-ID 重连."""
+    """用户补充澄清信息后恢复 graph。支持结构化 answers 或纯文本 clarificationResponse."""
     graph = get_ppt_graph()
     config = _config(req.threadId)
     last_id = parse_last_event_id(request.headers)
     if last_id is not None:
         return EventSourceResponse(_stream(graph, None, config, last_event_id=last_id))
+    # 优先结构化 answers，回退纯文本
+    if req.answers:
+        resp = _compose_answers(req.answers)
+    else:
+        resp = req.clarificationResponse or ""
+    if not resp:
+        raise HTTPException(status_code=400, detail="answers 或 clarificationResponse 至少需提供一个非空值")
     graph.update_state(config, {
-        "clarification_response": req.clarificationResponse,
-        "messages": [HumanMessage(content=req.clarificationResponse)],
+        "clarification_response": resp,
+        "messages": [HumanMessage(content=resp)],
     })
     return EventSourceResponse(_stream(graph, None, config))
