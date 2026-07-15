@@ -1,0 +1,3 @@
+import { Link } from "react-router-dom";
+import { WORKFLOWS } from "./workflow-catalog";
+export function WorkflowsPage() { return <section className="p-5"><h1 className="mb-4 text-2xl font-semibold">工作流</h1><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{WORKFLOWS.map((workflow) => <article key={workflow.id} className="rounded-lg border border-border p-4"><h2 className="font-medium">{workflow.name}</h2><p className="mt-1 text-sm text-muted-foreground">{workflow.description}</p><Link className="mt-3 inline-flex rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground" to={`/workflows/${workflow.id}`}>运行 {workflow.id === "ppt" ? "PPT" : workflow.name}</Link></article>)}</div></section>; }
