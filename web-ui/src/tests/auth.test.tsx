@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/features/auth/AuthProvider";
 import { apiRequest } from "@/lib/api-client";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { MemoryRouter, useLocation } from "react-router-dom";
 
 describe("authentication", () => {
   beforeEach(() => {
@@ -17,7 +18,7 @@ describe("authentication", () => {
       access_token: "token-1",
       user: { name: "lxqq", roles: ["admin"] },
     })));
-    render(<AuthProvider><LoginPage /></AuthProvider>);
+    render(<MemoryRouter><AuthProvider><LoginPage /></AuthProvider></MemoryRouter>);
     await userEvent.type(screen.getByLabelText("用户名"), "lxqq");
     await userEvent.type(screen.getByLabelText("密码"), "secret");
     await userEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -42,5 +43,12 @@ describe("authentication", () => {
     });
     expect(await screen.findByText("signed-out")).toBeInTheDocument();
     expect(localStorage.getItem("know-agent.auth")).toBeNull();
+  });
+
+  it("redirects an already authenticated user away from login", () => {
+    localStorage.setItem("know-agent.auth", JSON.stringify({ token: "token", user: { name: "u", roles: [] } }));
+    function LocationProbe() { return <span data-testid="pathname">{useLocation().pathname}</span>; }
+    render(<MemoryRouter initialEntries={["/login"]}><AuthProvider><LoginPage /><LocationProbe /></AuthProvider></MemoryRouter>);
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/assistant");
   });
 });

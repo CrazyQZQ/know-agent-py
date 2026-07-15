@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
 
 export function LoginPage() {
@@ -16,7 +17,7 @@ export function LoginPage() {
     finally { setSubmitting(false); }
   }
 
-  if (auth) return <main><h1>已登录</h1></main>;
+  if (auth) return <Navigate to="/assistant" replace />;
   return (
     <main className="flex min-h-full items-center justify-center bg-background p-6">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm">
