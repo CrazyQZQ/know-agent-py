@@ -2,7 +2,7 @@ import { apiRequest } from "@/lib/api-client";
 import { streamSse, type SseEvent } from "@/lib/sse-client";
 
 export type AssistantSession = { thread_id: string; name?: string; created_at?: string; updated_at?: string };
-export type AssistantMessage = { role: "user" | "assistant"; content: string; createdAt?: number };
+export type AssistantMessage = { id?: string; role: "user" | "assistant"; content: string; createdAt?: number };
 const app = "common_agent";
 const base = (user: string) => `/v1/apps/${encodeURIComponent(app)}/users/${encodeURIComponent(user)}/threads`;
 

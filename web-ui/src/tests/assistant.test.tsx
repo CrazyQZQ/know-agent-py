@@ -49,4 +49,57 @@ describe("AssistantPage", () => {
     })));
     expect(screen.getByText("你好")).toBeInTheDocument();
   });
+
+  it("updates one assistant message while SSE chunks arrive", async () => {
+    mocks.run.mockImplementation(async ({ onEvent }) => {
+      onEvent({ event: "message", data: "现在" });
+      onEvent({ event: "message", data: "是" });
+      onEvent({ event: "message", data: "完整回复" });
+    });
+    render(
+      <MemoryRouter initialEntries={["/assistant/t1"]}>
+        <AuthProvider><Routes><Route path="/assistant/:threadId" element={<AssistantPage />} /></Routes></AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith("u", "t1", "token"));
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+      target: { value: "提问" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(await screen.findByText("现在是完整回复")).toBeInTheDocument();
+    expect(screen.queryByText("现在")).not.toBeInTheDocument();
+    expect(screen.queryByText("现在是")).not.toBeInTheDocument();
+  });
+
+  it("smoothly scrolls the message list when new content arrives", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    mocks.run.mockImplementation(async ({ onEvent }) => {
+      onEvent({ event: "message", data: "新回复" });
+    });
+    render(
+      <MemoryRouter initialEntries={["/assistant/t1"]}>
+        <AuthProvider><Routes><Route path="/assistant/:threadId" element={<AssistantPage />} /></Routes></AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith("u", "t1", "token"));
+    scrollIntoView.mockClear();
+    fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+      target: { value: "提问" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    await screen.findByText("新回复");
+    await waitFor(() => expect(scrollIntoView).toHaveBeenLastCalledWith({
+      behavior: "smooth",
+      block: "end",
+    }));
+  });
 });

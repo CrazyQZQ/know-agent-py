@@ -19,6 +19,7 @@ export function AssistantPage() {
   const [approval, setApproval] = useState<{ id: string; title: string; description?: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const skipHistoryThreadRef = useRef<string | null>(null);
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setApproval(null);
@@ -26,6 +27,12 @@ export function AssistantPage() {
     if (skipHistoryThreadRef.current === threadId) { skipHistoryThreadRef.current = null; return; }
     void getAssistantHistory(user, threadId, token).then((rows) => setMessages(rows.map((row) => ({ ...row, createdAt: row.createdAt ?? Date.now() }))));
   }, [threadId, token, user]);
+
+  useEffect(() => {
+    if (messages.length > 0 || approval) {
+      messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [approval, messages]);
 
   const stop = () => {
     abortRef.current?.abort();
@@ -37,11 +44,17 @@ export function AssistantPage() {
   async function send(content: string) {
     if (streaming) return;
     const history = messages;
-    setMessages((current) => [...current, { role: "user", content, createdAt: Date.now() }]);
     setDraft("");
     setStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
+    const replyId = crypto.randomUUID();
+    const createdAt = Date.now();
+    setMessages((current) => [
+      ...current,
+      { id: crypto.randomUUID(), role: "user", content, createdAt },
+      { id: replyId, role: "assistant", content: "", createdAt },
+    ]);
     let answer = "";
     try {
       let targetThreadId = threadId;
@@ -57,7 +70,9 @@ export function AssistantPage() {
         onEvent: (event) => {
           if (event.event === "message") {
             answer += event.data;
-            setMessages((current) => [...current.filter((message) => message.content || message.role === "user"), { role: "assistant", content: answer, createdAt: Date.now() }]);
+            setMessages((current) => current.map((message) =>
+              message.id === replyId ? { ...message, content: answer } : message,
+            ));
           } else if (event.event === "interrupt" || event.event === "tool") {
             try {
               const data = JSON.parse(event.data) as { id?: string; name?: string; description?: string };
@@ -69,7 +84,11 @@ export function AssistantPage() {
         },
       });
     } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError")) setMessages((current) => [...current, { role: "assistant", content: "请求失败", createdAt: Date.now() }]);
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setMessages((current) => current.map((message) =>
+          message.id === replyId ? { ...message, content: "请求失败" } : message,
+        ));
+      }
     } finally {
       abortRef.current = null;
       setStreaming(false);
@@ -83,6 +102,11 @@ export function AssistantPage() {
     setStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
+    const replyId = crypto.randomUUID();
+    setMessages((current) => [
+      ...current,
+      { id: replyId, role: "assistant", content: "", createdAt: Date.now() },
+    ]);
     let answer = "";
     try {
       await resumeAssistant({
@@ -90,22 +114,26 @@ export function AssistantPage() {
         onEvent: (event) => {
           if (event.event === "message") {
             answer += event.data;
-            setMessages((current) => [...current.filter((message) => message.content || message.role === "user"), { role: "assistant", content: answer, createdAt: Date.now() }]);
+            setMessages((current) => current.map((message) =>
+              message.id === replyId ? { ...message, content: answer } : message,
+            ));
           }
         },
       });
     } finally {
       abortRef.current = null;
       setStreaming(false);
+      setMessages((current) => current.filter((message) => message.content || message.role === "user"));
     }
   }
 
   return <section className="flex h-full min-w-0 flex-1 flex-col">
     <div className="flex-1 space-y-4 overflow-y-auto px-5 py-6 md:px-10">
       <div className="mx-auto max-w-[49.5rem]">
-        {messages.map((message, index) => <ChatMessageRow key={`${index}-${message.role}`} {...message} createdAt={message.createdAt ?? 0} isStreaming={streaming && index === messages.length - 1 && message.role === "assistant"} />)}
+        {messages.map((message, index) => <ChatMessageRow key={message.id ?? `${index}-${message.role}`} {...message} createdAt={message.createdAt ?? 0} isStreaming={streaming && index === messages.length - 1 && message.role === "assistant"} />)}
         {approval ? <ToolApproval title={approval.title} description={approval.description} onApprove={() => void decideApproval("APPROVED")} onReject={() => void decideApproval("REJECTED")} /> : null}
         {!threadId ? <div className="flex min-h-[55vh] items-center justify-center text-sm text-muted-foreground">从左侧新建或选择一个对话</div> : null}
+        <div ref={messageEndRef} aria-hidden />
       </div>
     </div>
     <div className="px-4 pb-4 md:px-8"><ChatComposer value={draft} onChange={setDraft} onSend={(value) => void send(value)} isStreaming={streaming} onStop={stop} /></div>
