@@ -87,7 +87,9 @@ def page(
     size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> dict:
-    return DocumentRepository(db).page_documents(current, size, roles=get_current_roles())
+    return DocumentRepository(db).page_documents(
+        current, size, roles=get_current_roles(), current_user=get_current_user(),
+    )
 
 
 @router.get("/list-by-status", response_model=list[DocumentOut])
@@ -108,6 +110,7 @@ def search(
     """混合检索：keyword(pg_trgm) / vector(pgvector) / hybrid(RRF 融合). 按 accessible_by 角色过滤."""
     svc = SearchService(db)
     roles = get_current_roles()
+    current_user = get_current_user()
     # 构建 metadata 过滤条件（document_id 用列，其他用 metadata->>'key'）
     search_filter: dict = {}
     if document_id is not None:
@@ -116,13 +119,15 @@ def search(
         search_filter["fileName"] = file_name
     search_filter = search_filter or None
     if mode == "keyword":
-        results = svc.keyword_search(q, top_k=top_k, roles=roles, filter=search_filter)
+        results = svc.keyword_search(q, top_k=top_k, roles=roles, filter=search_filter, current_user=current_user)
     elif mode == "vector":
         results = svc.vector_search(q, top_k=top_k, roles=roles,
-                                    knowledge_base_type=knowledge_base_type, filter=search_filter)
+                                    knowledge_base_type=knowledge_base_type, filter=search_filter,
+                                    current_user=current_user)
     else:
         results = svc.hybrid_search(q, top_k=top_k, roles=roles,
-                                    knowledge_base_type=knowledge_base_type, filter=search_filter)
+                                    knowledge_base_type=knowledge_base_type, filter=search_filter,
+                                    current_user=current_user)
     return [
         SearchResultOut(
             segment_id=r.segment_id, text=r.text, score=r.score,
@@ -142,7 +147,9 @@ def list_roles_endpoint() -> list[dict]:
 
 @router.get("/{doc_id}", response_model=DocumentOut)
 def get_doc(doc_id: int, db: Session = Depends(get_db)) -> DocumentOut:
-    doc = DocumentRepository(db).get_document(doc_id, roles=get_current_roles())
+    doc = DocumentRepository(db).get_document(
+        doc_id, roles=get_current_roles(), current_user=get_current_user(),
+    )
     if doc is None:
         raise HTTPException(404, "document not found")
     return DocumentOut.model_validate(doc)

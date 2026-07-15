@@ -28,6 +28,7 @@ class MetadataKey:
     PARENT_CHUNK_ID = "parentChunkId"
     HEADER_LEVEL = "headerLevel"
     ACCESSIBLE_BY = "accessibleBy"
+    UPLOAD_USER = "uploadUser"
     URL = "url"
     SKIP_EMBEDDING = "skipEmbedding"
 

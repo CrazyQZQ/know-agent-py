@@ -18,6 +18,7 @@ class MultiQueryRetriever:
     def retrieve(
         self, queries: list[str], top_n: int = 20, roles: list[str] | None = None,
         knowledge_base_type: str | None = None, filter: dict | None = None,
+        current_user: str | None = None,
     ) -> list[SearchResult]:
         """对多个查询分别检索，跨查询 RRF 融合 + 去重，返回 top_n 候选."""
         scores: dict[str, float] = {}
@@ -28,6 +29,7 @@ class MultiQueryRetriever:
                 hits = self.search.hybrid_search(
                     q, top_k=top_n, roles=roles,
                     knowledge_base_type=knowledge_base_type, filter=filter,
+                    current_user=current_user,
                 )
             except Exception as e:
                 logger.warning("[rag] 查询检索失败 (query={!r}): {}", q[:50], e)

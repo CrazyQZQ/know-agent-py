@@ -72,11 +72,11 @@ def test_vector_search_returns_empty_when_no_vectorstore(monkeypatch):
 def test_hybrid_search_rrf_fusion(monkeypatch):
     monkeypatch.setattr("know_agent.services.document.search.get_vectorstore", lambda: None)
     svc = SearchService(db=MagicMock())
-    monkeypatch.setattr(svc, "keyword_search", lambda q, top_k=10, roles=None, filter=None: [
+    monkeypatch.setattr(svc, "keyword_search", lambda q, top_k=10, roles=None, filter=None, current_user=None: [
         SearchResult(segment_id=1, text="a", score=0.9, source="keyword", metadata={}),
         SearchResult(segment_id=2, text="b", score=0.8, source="keyword", metadata={}),
     ])
-    monkeypatch.setattr(svc, "vector_search", lambda q, top_k=10, roles=None, knowledge_base_type=None, filter=None: [
+    monkeypatch.setattr(svc, "vector_search", lambda q, top_k=10, roles=None, knowledge_base_type=None, filter=None, current_user=None: [
         SearchResult(segment_id=1, text="a", score=0.1, source="vector", metadata={}),
         SearchResult(segment_id=3, text="c", score=0.2, source="vector", metadata={}),
     ])
@@ -171,10 +171,10 @@ def test_vector_search_passes_filter_to_vectorstore(monkeypatch):
 def test_hybrid_search_passes_filter(monkeypatch):
     monkeypatch.setattr("know_agent.services.document.search.get_vectorstore", lambda: None)
     svc = SearchService(db=MagicMock())
-    monkeypatch.setattr(svc, "keyword_search", lambda q, top_k=10, roles=None, filter=None: [])
+    monkeypatch.setattr(svc, "keyword_search", lambda q, top_k=10, roles=None, filter=None, current_user=None: [])
     captured = {}
 
-    def fake_vec(q, top_k=10, roles=None, knowledge_base_type=None, filter=None):
+    def fake_vec(q, top_k=10, roles=None, knowledge_base_type=None, filter=None, current_user=None):
         captured["filter"] = filter
         return []
 

@@ -55,8 +55,8 @@ def get_result_cache() -> ResultCache:
 
 def make_cache_key(method: str, query: str, top_k: int,
                    roles: list[str] | None, knowledge_base_type: str | None,
-                   filter: dict | None) -> tuple:
-    """构建缓存键（roles/filter 转 hashable tuple）."""
+                   filter: dict | None, current_user: str | None = None) -> tuple:
+    """构建缓存键（roles/filter/current_user 转 hashable tuple）."""
     roles_t = tuple(roles) if roles else ()
     filter_t = tuple(sorted((filter or {}).items()))
-    return (method, query, top_k, roles_t, knowledge_base_type or "", filter_t)
+    return (method, query, top_k, roles_t, knowledge_base_type or "", filter_t, current_user or "")

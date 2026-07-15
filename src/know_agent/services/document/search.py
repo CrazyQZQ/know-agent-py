@@ -44,8 +44,10 @@ def _build_filter_clause(filter: dict | None) -> tuple[str, dict]:
     return " AND " + " AND ".join(clauses), params
 
 
-def _can_access(metadata: dict | None, roles: list[str] | None) -> bool:
-    """权限过滤：accessible_by 为空=公开；否则当前用户角色与文档角色求交集."""
+def _can_access(metadata: dict | None, roles: list[str] | None, current_user: str | None = None) -> bool:
+    """权限过滤：上传者本人始终可见；否则 accessible_by 为空=公开，否则角色重叠."""
+    if current_user and (metadata or {}).get("uploadUser") == current_user:
+        return True  # 上传者本人始终可见
     ab = (metadata or {}).get("accessibleBy")
     if not ab:
         return True
@@ -72,22 +74,25 @@ class SearchService:
     def keyword_search(
         self, query: str, top_k: int = 10, threshold: float = 0.1,
         roles: list[str] | None = None, filter: dict | None = None,
+        current_user: str | None = None,
     ) -> list[SearchResult]:
         """pg_trgm 关键词检索（word_similarity 子串匹配，替代 ES multi_match/BM25）.
 
         word_similarity(q, text) 衡量 q 作为 text 子串的 trigram 相似度，
         比 similarity() 更适合"短关键词 vs 长文本"场景。
-        按 accessible_by 角色过滤：空=公开，否则当前用户角色与文档角色求交集。
+        按权限过滤：公开 OR 角色重叠 OR 上传者本人。
         filter 按 metadata 过滤（document_id 用列，其他用 metadata->>'key'）。
         """
-        # roles 为空时只返回公开分块；非空时包含其可访问的
-        if not roles:
-            access_clause = "(metadata->>'accessibleBy' IS NULL OR metadata->>'accessibleBy' = '')"
-        else:
-            access_clause = (
-                "(metadata->>'accessibleBy' IS NULL OR metadata->>'accessibleBy' = '' "
-                "OR string_to_array(metadata->>'accessibleBy', ',') && :roles)"
-            )
+        # 权限条件：公开（accessible_by 空）OR 角色重叠 OR 上传者本人
+        access_parts = ["(metadata->>'accessibleBy' IS NULL OR metadata->>'accessibleBy' = '')"]
+        params: dict = {"q": query, "threshold": threshold, "k": top_k}
+        if roles:
+            access_parts.append("string_to_array(metadata->>'accessibleBy', ',') && :roles")
+            params["roles"] = roles
+        if current_user:
+            access_parts.append("metadata->>'uploadUser' = :current_user")
+            params["current_user"] = current_user
+        access_clause = "(" + " OR ".join(access_parts) + ")"
         filter_clause, filter_params = _build_filter_clause(filter)
         sql = text(
             f"""
@@ -100,9 +105,6 @@ class SearchService:
             LIMIT :k
             """
         )
-        params: dict = {"q": query, "threshold": threshold, "k": top_k}
-        if roles:
-            params["roles"] = roles
         params.update(filter_params)
         rows = self.db.execute(sql, params).mappings().all()
         return [
@@ -117,28 +119,29 @@ class SearchService:
         ]
 
     def vector_search(self, query: str, top_k: int = 10, roles: list[str] | None = None,
-                      knowledge_base_type: str | None = None, filter: dict | None = None) -> list[SearchResult]:
+                      knowledge_base_type: str | None = None, filter: dict | None = None,
+                      current_user: str | None = None) -> list[SearchResult]:
         """pgvector 向量检索（cosine 距离，越小越相似）.
 
         PGVector metadata filter 难以表达"为空 OR 包含"语义，
-        改为 over-fetch 后 Python 侧按 accessible_by 角色过滤。
+        改为 over-fetch 后 Python 侧按权限过滤（角色 OR 上传者本人）。
         knowledge_base_type 指定时按类型隔离 collection 检索。
         filter 透传给 PGVector 做 metadata 预过滤。
         """
-        cache_key = make_cache_key("vector", query, top_k, roles, knowledge_base_type, filter)
+        cache_key = make_cache_key("vector", query, top_k, roles, knowledge_base_type, filter, current_user)
         cached = get_result_cache().get(cache_key)
         if cached is not None:
             return cached
         vs = get_vectorstore(collection_for(knowledge_base_type)) if knowledge_base_type else self.vectorstore
         if not vs:
             return []
-        # over-fetch 3 倍以补偿权限过滤导致的结果减少
-        fetch_k = top_k * 3 if roles else top_k
+        # over-fetch 3 倍以补偿权限过滤导致的结果减少（有 roles 或 current_user 时）
+        fetch_k = top_k * 3 if (roles or current_user) else top_k
         results = vs.similarity_search_with_score(query, k=fetch_k, filter=filter)
         out: list[SearchResult] = []
         for doc, distance in results:
             meta = doc.metadata or {}
-            if not _can_access(meta, roles):
+            if not _can_access(meta, roles, current_user):
                 continue
             out.append(
                 SearchResult(
@@ -155,17 +158,19 @@ class SearchService:
         return out
 
     def hybrid_search(self, query: str, top_k: int = 10, roles: list[str] | None = None,
-                      knowledge_base_type: str | None = None, filter: dict | None = None) -> list[SearchResult]:
-        """RRF 融合：keyword + vector. score = Σ 1/(K + rank). 按 roles 过滤权限.
+                      knowledge_base_type: str | None = None, filter: dict | None = None,
+                      current_user: str | None = None) -> list[SearchResult]:
+        """RRF 融合：keyword + vector. score = Σ 1/(K + rank). 按权限过滤（角色 OR 上传者）.
         knowledge_base_type 透传给向量检索（按类型隔离 collection）；filter 透传给两侧.
         """
-        cache_key = make_cache_key("hybrid", query, top_k, roles, knowledge_base_type, filter)
+        cache_key = make_cache_key("hybrid", query, top_k, roles, knowledge_base_type, filter, current_user)
         cached = get_result_cache().get(cache_key)
         if cached is not None:
             return cached
-        kw = self.keyword_search(query, top_k=top_k, roles=roles, filter=filter)
+        kw = self.keyword_search(query, top_k=top_k, roles=roles, filter=filter, current_user=current_user)
         vec = self.vector_search(query, top_k=top_k, roles=roles,
-                                 knowledge_base_type=knowledge_base_type, filter=filter)
+                                 knowledge_base_type=knowledge_base_type, filter=filter,
+                                 current_user=current_user)
 
         scores: dict[int, float] = {}
         results: dict[int, SearchResult] = {}

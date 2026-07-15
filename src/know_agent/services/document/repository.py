@@ -8,7 +8,13 @@ from know_agent.models.enums import DocumentStatus, SegmentStatus
 
 
 def _doc_accessible(accessible_by: str | None, roles: list[str] | None) -> bool:
-    """文档对当前角色是否可访问：accessible_by 空=公开；否则角色求交集."""
+    """文档对当前角色是否可访问.
+
+    roles=None 表示不检查权限（内部处理：run_pipeline/split/embed/delete 直接取文档）。
+    accessible_by 空=公开；否则当前角色与文档角色求交集。
+    """
+    if roles is None:
+        return True  # 内部处理：不检查权限
     if not accessible_by:
         return True
     if not roles:
@@ -22,11 +28,14 @@ class DocumentRepository:
         self.db = db
 
     # ---- document ----
-    def get_document(self, doc_id: int, roles: list[str] | None = None) -> KnowledgeDocument | None:
+    def get_document(
+        self, doc_id: int, roles: list[str] | None = None, current_user: str | None = None,
+    ) -> KnowledgeDocument | None:
         doc = self.db.get(KnowledgeDocument, doc_id)
         if doc is None:
             return None
-        if not _doc_accessible(doc.accessible_by, roles):
+        # 权限：角色可见 OR 上传者本人（roles=None 表示内部处理，不检查）
+        if not _doc_accessible(doc.accessible_by, roles) and doc.upload_user != current_user:
             return None  # 无权限视为不存在（404）
         return doc
 
@@ -48,27 +57,31 @@ class DocumentRepository:
             select(KnowledgeDocument).where(KnowledgeDocument.status == doc_status)
         ))
 
-    def page_documents(self, current: int = 1, size: int = 10, roles: list[str] | None = None) -> dict:
+    def page_documents(
+        self, current: int = 1, size: int = 10,
+        roles: list[str] | None = None, current_user: str | None = None,
+    ) -> dict:
         stmt = select(KnowledgeDocument)
         count_stmt = select(func.count()).select_from(KnowledgeDocument)
-        if not roles:
-            # 无角色：仅公开
-            cond = or_(
-                KnowledgeDocument.accessible_by.is_(None),
-                KnowledgeDocument.accessible_by == "",
-            )
-            stmt = stmt.where(cond)
-            count_stmt = count_stmt.where(cond)
-        else:
-            # 有角色：公开 OR 任一角色在 accessible_by 列表（数组重叠）
+        # 权限条件：公开 OR 角色重叠 OR 上传者本人
+        conds = [
+            KnowledgeDocument.accessible_by.is_(None),
+            KnowledgeDocument.accessible_by == "",
+        ]
+        params: dict = {}
+        if roles:
             arr_overlap = text("string_to_array(accessible_by, ',') && CAST(:roles AS text[])")
-            cond = or_(
-                KnowledgeDocument.accessible_by.is_(None),
-                KnowledgeDocument.accessible_by == "",
-                arr_overlap,
-            )
-            stmt = stmt.where(cond).params(roles=roles)
-            count_stmt = count_stmt.where(cond).params(roles=roles)
+            conds.append(arr_overlap)
+            params["roles"] = roles
+        if current_user:
+            conds.append(KnowledgeDocument.upload_user == current_user)
+            params["current_user"] = current_user
+        cond = or_(*conds)
+        stmt = stmt.where(cond)
+        count_stmt = count_stmt.where(cond)
+        if params:
+            stmt = stmt.params(**params)
+            count_stmt = count_stmt.params(**params)
         total = self.db.scalar(count_stmt) or 0
         rows = list(self.db.scalars(
             stmt.order_by(KnowledgeDocument.doc_id.desc())

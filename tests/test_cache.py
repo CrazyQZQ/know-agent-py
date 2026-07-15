@@ -34,9 +34,16 @@ def test_cache_fifo_evict():
 
 def test_make_cache_key():
     key = make_cache_key("vector", "query", 5, ["a", "b"], "DOCUMENT_SEARCH", {"x": 1})
-    assert key == ("vector", "query", 5, ("a", "b"), "DOCUMENT_SEARCH", (("x", 1),))
+    assert key == ("vector", "query", 5, ("a", "b"), "DOCUMENT_SEARCH", (("x", 1),), "")
 
 
 def test_make_cache_key_none():
     key = make_cache_key("hybrid", "q", 10, None, None, None)
-    assert key == ("hybrid", "q", 10, (), "", ())
+    assert key == ("hybrid", "q", 10, (), "", (), "")
+
+
+def test_make_cache_key_distinguishes_user():
+    """current_user 进缓存键，不同用户检索结果不共享缓存."""
+    k1 = make_cache_key("vector", "q", 5, None, None, None, "alice")
+    k2 = make_cache_key("vector", "q", 5, None, None, None, "bob")
+    assert k1 != k2

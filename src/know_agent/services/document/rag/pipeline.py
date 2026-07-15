@@ -41,11 +41,12 @@ class RagPipeline:
         self.candidate_pool = s.rag_candidate_pool
 
     def run(self, query: str, top_k: int | None = None, roles: list[str] | None = None,
-            knowledge_base_type: str | None = None, filter: dict | None = None) -> str:
+            knowledge_base_type: str | None = None, filter: dict | None = None,
+            current_user: str | None = None) -> str:
         """执行完整 RAG 流程，返回带引用标注的上下文文本."""
         top_k = top_k or self.top_k
-        logger.info("[rag] 开始检索: query={!r} top_k={} roles={} kb={} filter={}",
-                    query[:80], top_k, roles, knowledge_base_type, filter)
+        logger.info("[rag] 开始检索: query={!r} top_k={} roles={} kb={} filter={} user={}",
+                    query[:80], top_k, roles, knowledge_base_type, filter, current_user)
 
         # ① 查询改写（multi-query + HyDE）
         queries = self.transformer.transform(query)
@@ -54,6 +55,7 @@ class RagPipeline:
         candidates = self.retriever.retrieve(
             queries, top_n=self.candidate_pool, roles=roles,
             knowledge_base_type=knowledge_base_type, filter=filter,
+            current_user=current_user,
         )
         if not candidates:
             return "未检索到相关信息。"
