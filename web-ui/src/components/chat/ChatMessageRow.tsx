@@ -36,7 +36,8 @@ export function ChatMessageRow({ role, content, createdAt, isStreaming = false }
       placement={isUser ? "end" : "start"}
       variant={isUser ? "filled" : "borderless"}
       shape="default"
-      footerPlacement="inner-end"
+      footerPlacement="outer-end"
+      styles={{ footer: { marginTop: 4 } }}
       content={content}
       loading={showTyping}
       loadingRender={() => (
@@ -48,7 +49,7 @@ export function ChatMessageRow({ role, content, createdAt, isStreaming = false }
       )}
       contentRender={(c) => (isUser ? c : <MarkdownText streaming={isStreaming}>{c as string}</MarkdownText>)}
       footer={
-        <div className={`mt-2 flex items-center gap-1 text-[11px] text-muted-foreground ${isUser ? "justify-end" : ""}`}>
+        <div className={`flex items-center gap-1 text-[11px] text-muted-foreground ${isUser ? "justify-end" : "justify-start"}`}>
           <time dateTime={new Date(createdAt).toISOString()}>{formatClock(createdAt)}</time>
           <button
             type="button"
