@@ -1,21 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Button, Select } from "antd";
+import { Button, Select, Tag } from "antd";
 import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search, Trash2, Upload } from "lucide-react";
 
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useEnterAnimation } from "@/lib/gsap-animations";
 import { formatDateTime } from "@/lib/format";
 import { DocumentUploadDialog } from "./DocumentUploadDialog";
-import { deleteDocument, listAllDocuments, type DocumentRow } from "./knowledge-api";
-
-const STATUS: Record<string, string> = {
-  UPLOADED: "text-slate-600 bg-slate-100",
-  CONVERTING: "text-amber-700 bg-amber-100",
-  CONVERTED: "text-blue-700 bg-blue-100",
-  CHUNKED: "text-cyan-700 bg-cyan-100",
-  VECTOR_STORED: "text-emerald-700 bg-emerald-100",
-};
+import { DOCUMENT_STATUS, deleteDocument, listAllDocuments, type DocumentRow } from "./knowledge-api";
 
 export function KnowledgeListPage() {
   const { auth } = useAuth();
@@ -52,8 +44,8 @@ export function KnowledgeListPage() {
         <Button type="primary" aria-label="上传文档" onClick={() => setUploadOpen(true)} icon={<Upload className="h-4 w-4" />} />
       </div>
       <table className="w-full text-left text-sm">
-        <thead><tr className="border-b"><th className="p-2">文档</th><th className="p-2">状态</th><th className="p-2">更新时间</th><th className="p-2">操作</th></tr></thead>
-        <tbody>{visible.map((row) => <tr key={row.id} className="border-b transition-colors hover:bg-muted/35"><td className="p-2">{row.title}</td><td className="p-2"><span className={`rounded px-2 py-1 text-xs ${STATUS[row.status] ?? STATUS.UPLOADED}`}>{row.status}</span></td><td className="p-2">{formatDateTime(row.updated_at)}</td><td className="flex gap-1 p-2"><Link aria-label="查看详情" className="inline-flex h-8 w-8 items-center justify-center rounded-md text-primary hover:bg-muted" to={`/knowledge/${row.id}`}><Eye className="h-4 w-4" /></Link><Button type="text" danger shape="circle" size="small" aria-label="删除" onClick={() => void remove(row.id)} icon={<Trash2 className="h-4 w-4" />} /></td></tr>)}</tbody>
+        <thead><tr className="border-b"><th className="p-2">文档</th><th className="p-2">状态</th><th className="p-2">更新时间</th><th className="p-2 text-center">操作</th></tr></thead>
+        <tbody>{visible.map((row) => <tr key={row.id} className="border-b transition-colors hover:bg-muted/35"><td className="p-2">{row.title}</td><td className="p-2"><Tag color={DOCUMENT_STATUS[row.status]?.color ?? "blue"}>{DOCUMENT_STATUS[row.status]?.label ?? row.status}</Tag></td><td className="p-2">{formatDateTime(row.updated_at)}</td><td className="flex gap-1 justify-center p-2"><Link aria-label="查看详情" className="inline-flex h-8 w-8 items-center justify-center rounded-md text-primary hover:bg-muted" to={`/knowledge/${row.id}`}><Eye className="h-4 w-4" /></Link><Button type="text" danger shape="circle" size="small" aria-label="删除" onClick={() => void remove(row.id)} icon={<Trash2 className="h-4 w-4" />} /></td></tr>)}</tbody>
       </table>
       <div className="mt-4 flex items-center justify-end gap-2 text-sm"><span>共 {total} 条 · 第 {page}/{pages} 页</span><Button shape="circle" size="small" aria-label="上一页" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} icon={<ChevronLeft className="h-4 w-4" />} /><Button shape="circle" size="small" aria-label="下一页" disabled={page >= pages} onClick={() => setPage((value) => value + 1)} icon={<ChevronRight className="h-4 w-4" />} /></div>
     </section>

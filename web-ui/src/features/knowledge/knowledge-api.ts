@@ -3,6 +3,13 @@ export type DocumentRow = { id: number; title: string; status: string; updated_a
 type DocumentRecord = { doc_id: number; doc_title: string; status: string; updated_at: string | null; knowledge_base_type?: string };
 export type DocumentPage = { records: DocumentRecord[]; total: number; current?: number; size?: number };
 export type RoleOption = { name: string; displayName?: string };
+export const DOCUMENT_STATUS: Record<string, { label: string; color: string }> = {
+  UPLOADED: { label: "已上传", color: "blue" },
+  CONVERTING: { label: "转换中", color: "gold" },
+  CONVERTED: { label: "已转换", color: "geekblue" },
+  CHUNKED: { label: "已分块", color: "cyan" },
+  VECTOR_STORED: { label: "已向量化", color: "green" },
+};
 export type DocumentDetail = {
   doc_id: number;
   doc_title: string;

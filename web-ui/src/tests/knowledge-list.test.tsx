@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { KnowledgeListPage } from "@/features/knowledge/KnowledgeListPage";
 import { AuthProvider } from "@/features/auth/AuthProvider";
 
-vi.mock("@/features/knowledge/knowledge-api", () => ({ listAllDocuments: vi.fn().mockResolvedValue([{ id: 1, title: "Doc", status: "VECTOR_STORED", updated_at: "2026-07-14T10:20:30" }]), deleteDocument: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/features/knowledge/knowledge-api", () => ({ listAllDocuments: vi.fn().mockResolvedValue([{ id: 1, title: "Doc", status: "VECTOR_STORED", updated_at: "2026-07-14T10:20:30" }]), deleteDocument: vi.fn().mockResolvedValue(undefined), DOCUMENT_STATUS: { UPLOADED: { label: "已上传", color: "blue" }, CONVERTING: { label: "转换中", color: "gold" }, CONVERTED: { label: "已转换", color: "geekblue" }, CHUNKED: { label: "已分块", color: "cyan" }, VECTOR_STORED: { label: "已向量化", color: "green" } } }));
 describe("knowledge document list", () => {
   it("renders search/filter/refresh, status color, timestamp and full pagination actions", async () => {
     localStorage.setItem("know-agent.auth", JSON.stringify({ token: "token", user: { name: "u", roles: [] } }));
@@ -13,7 +13,7 @@ describe("knowledge document list", () => {
     expect(screen.getByRole("button", { name: "上传文档" })).not.toHaveClass("fixed");
     expect(screen.getByRole("button", { name: /刷新/i })).toBeInTheDocument();
     expect(screen.getByRole("combobox")).toBeInTheDocument();
-    expect(await screen.findByText("VECTOR_STORED")).toHaveClass("text-emerald-700");
+    expect(await screen.findByText("已向量化")).toBeInTheDocument();
     expect(screen.getByText("2026-07-14 10:20:30")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /上一页/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /下一页/i })).toBeInTheDocument();
