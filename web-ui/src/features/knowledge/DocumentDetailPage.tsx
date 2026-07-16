@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { useEnterAnimation } from "@/lib/gsap-animations";
 import { apiRequest } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/format";
 
@@ -18,6 +19,7 @@ type DocumentDetail = {
 
 export function DocumentDetailPage() {
   const { auth } = useAuth();
+  const sectionRef = useEnterAnimation<HTMLElement>();
   const { documentId } = useParams();
   const navigate = useNavigate();
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
@@ -35,7 +37,7 @@ export function DocumentDetailPage() {
     navigate("/knowledge");
   };
   return (
-    <section className="p-5">
+    <section ref={sectionRef} className="p-5">
       <div className="mb-4 flex items-center gap-3">
         <Link to="/knowledge">返回</Link>
         <h1 className="text-2xl font-semibold">文档详情</h1>

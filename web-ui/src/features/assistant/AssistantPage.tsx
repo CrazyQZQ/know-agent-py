@@ -4,11 +4,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatMessageRow } from "@/components/chat/ChatMessageRow";
 import { ToolApproval } from "@/components/chat/ToolApproval";
+import { useEnterAnimation } from "@/lib/gsap-animations";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { createAssistantSession, getAssistantHistory, resumeAssistant, runAssistant, type AssistantMessage } from "./assistant-api";
 
 export function AssistantPage() {
   const { auth } = useAuth();
+  const sectionRef = useEnterAnimation<HTMLElement>();
   const { threadId } = useParams<{ threadId?: string }>();
   const navigate = useNavigate();
   const user = auth?.user.name ?? "anonymous";
@@ -127,7 +129,7 @@ export function AssistantPage() {
     }
   }
 
-  return <section className="flex h-full min-w-0 flex-1 flex-col">
+  return <section ref={sectionRef} className="flex h-full min-w-0 flex-1 flex-col">
     <div className="flex-1 space-y-4 overflow-y-auto px-5 py-6 md:px-10">
       <div className="mx-auto max-w-[49.5rem]">
         {messages.map((message, index) => <ChatMessageRow key={message.id ?? `${index}-${message.role}`} {...message} createdAt={message.createdAt ?? 0} isStreaming={streaming && index === messages.length - 1 && message.role === "assistant"} />)}

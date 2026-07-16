@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useAuth } from "@/features/auth/AuthProvider";
+import { useEnterAnimation } from "@/lib/gsap-animations";
 import { listGraphs, type GraphSummary } from "@/features/workflows/workflow-api";
 import { ApiError } from "@/lib/api-client";
 
@@ -13,6 +14,7 @@ function graphErrorMessage(error: unknown): string {
 
 export function WorkflowsPage() {
   const { auth } = useAuth();
+  const sectionRef = useEnterAnimation<HTMLElement>();
   const [graphs, setGraphs] = useState<GraphSummary[]>([]);
   const [error, setError] = useState("");
 
@@ -32,7 +34,7 @@ export function WorkflowsPage() {
   }, [auth?.token]);
 
   return (
-    <section className="p-5">
+    <section ref={sectionRef} className="p-5">
       <h1 className="mb-4 text-2xl font-semibold">工作流</h1>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {!error && graphs.length === 0 ? (

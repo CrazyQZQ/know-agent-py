@@ -53,7 +53,6 @@ export default defineConfig(({ mode }) => {
       // exclude the markdown/remark/rehype chain: Vite's pre-bundling is needed
       // there for CommonJS interop such as style-to-js.
       exclude: [
-        "@radix-ui/react-dialog",
         "react-syntax-highlighter/dist/esm/prism-async-light",
         "react-syntax-highlighter/dist/esm/styles/prism/one-dark",
         "react-syntax-highlighter/dist/esm/styles/prism/one-light",

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Select } from "antd";
 import { RefreshCw, Search } from "lucide-react";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { useEnterAnimation } from "@/lib/gsap-animations";
 import { formatDateTime } from "@/lib/format";
 import { DocumentUploadDialog } from "./DocumentUploadDialog";
 import { deleteDocument, listAllDocuments, type DocumentRow } from "./knowledge-api";
@@ -17,6 +18,7 @@ const STATUS: Record<string, string> = {
 
 export function KnowledgeListPage() {
   const { auth } = useAuth();
+  const sectionRef = useEnterAnimation<HTMLElement>();
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -33,7 +35,7 @@ export function KnowledgeListPage() {
 
   return <>
     <DocumentUploadDialog open={uploadOpen} onClose={() => { setUploadOpen(false); void load(); }} />
-    <section className="p-5">
+    <section ref={sectionRef} className="p-5">
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-2xl font-semibold">知识库</h1>
         <div className="relative w-64 shrink-0">
