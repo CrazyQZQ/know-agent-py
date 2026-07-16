@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button, Descriptions, Empty, List, Popconfirm, Tag } from "antd";
 import { ArrowLeft, Check, Copy, Trash2 } from "lucide-react";
@@ -11,6 +11,34 @@ import { MarkdownText } from "@/components/MarkdownText";
 import { DOCUMENT_STATUS, deleteDocument, getDocument, listSegmentsByDocument, type DocumentDetail, type SegmentRow } from "./knowledge-api";
 
 const SEGMENT_PAGE_SIZE = 8;
+// 折叠时正文最大高度（约 3-4 行），超出显示"展开全部"
+const COLLAPSE_HEIGHT = 96;
+
+function SegmentCard({ seg, index, copied, onCopy }: { seg: SegmentRow; index: number; copied: boolean; onCopy: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (el) setClamped(el.scrollHeight > COLLAPSE_HEIGHT);
+  }, [seg.text]);
+
+  return (
+    <div className="group w-full rounded-lg border border-border/60 bg-card p-4 transition-all hover:border-primary/30 hover:shadow-md">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-semibold text-primary">{index + 1}</span>
+        <span className="text-xs text-muted-foreground">{seg.text.length} 字</span>
+        <Button type="text" size="small" className="ml-auto opacity-0 transition-opacity group-hover:opacity-100" aria-label={`复制分段 ${index + 1}`} onClick={onCopy} icon={copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />} />
+      </div>
+      <div ref={bodyRef} className={`markdown-content text-sm leading-6 ${expanded ? "" : "overflow-hidden"}`} style={expanded ? undefined : { maxHeight: COLLAPSE_HEIGHT }}>
+        <MarkdownText>{seg.text}</MarkdownText>
+      </div>
+      {clamped ? (
+        <Button type="link" size="small" className="mt-1 h-6 p-0 text-xs" onClick={() => setExpanded((v) => !v)}>{expanded ? "收起" : "展开全部"}</Button>
+      ) : null}
+    </div>
+  );
+}
 
 export function DocumentDetailPage() {
   const { auth } = useAuth();
@@ -81,14 +109,7 @@ export function DocumentDetailPage() {
           pagination={{ pageSize: SEGMENT_PAGE_SIZE, size: "small", showSizeChanger: false }}
           renderItem={(seg, index) => (
             <List.Item className="border-0! px-0! py-1.5!">
-              <div className="group w-full rounded-lg border border-border/60 bg-card p-4 transition-all hover:border-primary/30 hover:shadow-md">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-semibold text-primary">{index + 1}</span>
-                  <span className="text-xs text-muted-foreground">{seg.text.length} 字</span>
-                  <Button type="text" size="small" className="ml-auto opacity-0 transition-opacity group-hover:opacity-100" aria-label={`复制分段 ${index + 1}`} onClick={() => void copySegment(seg)} icon={copiedId === seg.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />} />
-                </div>
-                <div className="markdown-content text-sm leading-6"><MarkdownText>{seg.text}</MarkdownText></div>
-              </div>
+              <SegmentCard seg={seg} index={index} copied={copiedId === seg.id} onCopy={() => void copySegment(seg)} />
             </List.Item>
           )}
         />
