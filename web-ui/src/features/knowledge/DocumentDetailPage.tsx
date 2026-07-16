@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Button, Card, Descriptions, Empty, List, Popconfirm, Tag } from "antd";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { Button, Descriptions, Empty, List, Popconfirm, Tag } from "antd";
+import { ArrowLeft, Check, Copy, Trash2 } from "lucide-react";
 
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useEnterAnimation } from "@/lib/gsap-animations";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import { formatDateTime } from "@/lib/format";
 import { MarkdownText } from "@/components/MarkdownText";
 import { DOCUMENT_STATUS, deleteDocument, getDocument, listSegmentsByDocument, type DocumentDetail, type SegmentRow } from "./knowledge-api";
+
+const SEGMENT_PAGE_SIZE = 8;
 
 export function DocumentDetailPage() {
   const { auth } = useAuth();
@@ -17,6 +20,12 @@ export function DocumentDetailPage() {
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [segments, setSegments] = useState<SegmentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const copiedTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!documentId) return;
@@ -34,6 +43,13 @@ export function DocumentDetailPage() {
   async function remove() {
     await deleteDocument(auth?.token ?? "", Number(documentId));
     navigate("/knowledge");
+  }
+
+  async function copySegment(seg: SegmentRow) {
+    if (!(await copyTextToClipboard(seg.text))) return;
+    setCopiedId(seg.id);
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(() => setCopiedId(null), 1_500);
   }
 
   return (
@@ -61,13 +77,18 @@ export function DocumentDetailPage() {
       {loading ? <Empty description="加载中..." /> : segments.length === 0 ? <Empty description="暂无分段" /> : (
         <List
           dataSource={segments}
-          pagination={{ pageSize: 10, size: "small", showSizeChanger: false }}
+          split={false}
+          pagination={{ pageSize: SEGMENT_PAGE_SIZE, size: "small", showSizeChanger: false }}
           renderItem={(seg, index) => (
-            <List.Item className="block!">
-              <Card size="small">
-                <div className="mb-2 text-xs font-medium text-muted-foreground">#{index + 1}</div>
-                <div className="markdown-content text-sm"><MarkdownText>{seg.text}</MarkdownText></div>
-              </Card>
+            <List.Item className="border-0! px-0! py-1.5!">
+              <div className="group w-full rounded-lg border border-border/60 bg-card p-4 transition-all hover:border-primary/30 hover:shadow-md">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-semibold text-primary">{index + 1}</span>
+                  <span className="text-xs text-muted-foreground">{seg.text.length} 字</span>
+                  <Button type="text" size="small" className="ml-auto opacity-0 transition-opacity group-hover:opacity-100" aria-label={`复制分段 ${index + 1}`} onClick={() => void copySegment(seg)} icon={copiedId === seg.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />} />
+                </div>
+                <div className="markdown-content text-sm leading-6"><MarkdownText>{seg.text}</MarkdownText></div>
+              </div>
             </List.Item>
           )}
         />
