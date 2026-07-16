@@ -44,6 +44,12 @@ export function AppSidebar({ user, token = "", onLogout, onToggleTheme, mobileOp
   useEffect(() => { void loadSessions(); }, [activeId, loadSessions]);
 
   async function newConversation() {
+    // 已在空对话页面（/assistant 无 threadId，或刚新建未发消息），点击新建无效果
+    const current = sessions.find((item) => item.thread_id === activeId);
+    if (!activeId || (current && (current.name === "新对话" || !current.name))) {
+      onCloseMobile?.();
+      return;
+    }
     const created = await createAssistantSession(user.name, token);
     setSessions((current) => [{ thread_id: created.thread_id, name: "新对话" }, ...current.filter((item) => item.thread_id !== created.thread_id)]);
     navigate(`/assistant/${created.thread_id}`);

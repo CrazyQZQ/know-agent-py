@@ -164,7 +164,7 @@ export function AssistantPage() {
       <div className="mx-auto max-w-[49.5rem]">
         {messages.map((message, index) => <ChatMessageRow key={message.id ?? `${index}-${message.role}`} {...message} createdAt={message.createdAt ?? 0} isStreaming={streaming && index === messages.length - 1 && message.role === "assistant"} />)}
         {approval ? <ToolApproval title={approval.title} description={approval.description} onApprove={() => void decideApproval("APPROVED")} onReject={() => void decideApproval("REJECTED")} /> : null}
-        {!threadId && messages.length === 0 ? (
+        {messages.length === 0 && !approval ? (
           <div className="flex min-h-[55vh] flex-col items-center justify-center gap-6">
             <Welcome variant="borderless" icon={<Bot className="h-12 w-12 text-primary" />} title="你好，我是智能助理" description="我可以帮你总结文档、解释概念、制定计划。选择一个提示开始，或直接输入你的问题。" />
             <Prompts className="w-full max-w-2xl" items={QUICK_PROMPTS} onItemClick={({ data }) => void send(String(data.label))} wrap fadeIn />
