@@ -1,7 +1,9 @@
 import ReactDOM from "react-dom/client";
 
 import App from "./app/App";
+import { RootProviders } from "./app/RootProviders";
 import { AuthProvider } from "./features/auth/AuthProvider";
+import { ThemeProvider } from "@/hooks/useTheme";
 import { BrowserRouter } from "react-router-dom";
 import "./globals.css";
 
@@ -24,11 +26,15 @@ if (typeof globalThis.crypto !== "undefined" && !("randomUUID" in globalThis.cry
 const root = document.getElementById("root");
 if (!root) throw new Error("root element missing");
 
-/* StrictMode disabled: dev double-invokes state updaters; delta accumulation must stay pure — see useNanobotStream. */
+/* StrictMode disabled: dev double-invokes state updaters; delta accumulation must stay pure - see useNanobotStream. */
 ReactDOM.createRoot(root).render(
   <BrowserRouter>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <ThemeProvider>
+      <RootProviders>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </RootProviders>
+    </ThemeProvider>
   </BrowserRouter>,
 );

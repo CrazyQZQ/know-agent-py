@@ -10,7 +10,19 @@ import {
 
 type Theme = "light" | "dark";
 const STORAGE_KEY = "nanobot-webui.theme";
-const ThemeContext = createContext<Theme>("light");
+
+interface ThemeContextValue {
+  theme: Theme;
+  toggle: () => void;
+  setTheme: (t: Theme) => void;
+}
+
+// 默认值：保证在无 ThemeProvider 的测试场景下 useTheme() 仍可安全调用。
+const ThemeContext = createContext<ThemeContextValue>({
+  theme: "light",
+  toggle: () => {},
+  setTheme: () => {},
+});
 
 function readStored(): Theme | null {
   try {
@@ -27,11 +39,7 @@ function applyTheme(theme: Theme): void {
   else root.classList.remove("dark");
 }
 
-export function useTheme(): {
-  theme: Theme;
-  toggle: () => void;
-  setTheme: (t: Theme) => void;
-} {
+export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     const stored = readStored();
     if (stored) return stored;
@@ -57,13 +65,14 @@ export function useTheme(): {
     () => setThemeState((t) => (t === "dark" ? "light" : "dark")),
     [],
   );
-  return { theme, toggle, setTheme };
+  const value: ThemeContextValue = { theme, toggle, setTheme };
+  return createElement(ThemeContext.Provider, { value }, children);
 }
 
-export function ThemeProvider({ theme, children }: { theme: Theme; children: ReactNode }) {
-  return createElement(ThemeContext.Provider, { value: theme }, children);
+export function useTheme(): ThemeContextValue {
+  return useContext(ThemeContext);
 }
 
 export function useThemeValue(): Theme {
-  return useContext(ThemeContext);
+  return useContext(ThemeContext).theme;
 }
