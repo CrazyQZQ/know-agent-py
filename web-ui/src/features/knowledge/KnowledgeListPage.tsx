@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Select } from "antd";
 import { RefreshCw, Search } from "lucide-react";
-
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { formatDateTime } from "@/lib/format";
 import { DocumentUploadDialog } from "./DocumentUploadDialog";
@@ -41,9 +40,10 @@ export function KnowledgeListPage() {
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <input aria-label="搜索文档" role="searchbox" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} className="h-9 w-full rounded-md border pl-8 pr-2 text-sm" placeholder="搜索文档" />
         </div>
-        <Select value={filter} onValueChange={(value) => { setPage(1); setFilter(value); }}>
-          <SelectTrigger aria-label="知识库类型" className="h-9 w-36 rounded-md"><SelectValue placeholder="全部类型" /></SelectTrigger>
-          <SelectContent><SelectItem value="all">全部类型</SelectItem><SelectItem value="qa">问答库</SelectItem><SelectItem value="data">数据查询</SelectItem></SelectContent>
+        <Select aria-label="知识库类型" value={filter} onChange={(value) => { setPage(1); setFilter(value); }} className="w-36" placeholder="全部类型">
+          <Select.Option value="all">全部类型</Select.Option>
+          <Select.Option value="qa">问答库</Select.Option>
+          <Select.Option value="data">数据查询</Select.Option>
         </Select>
         <button type="button" aria-label="刷新" onClick={() => void load()} className="rounded-md border p-2 transition-colors hover:bg-muted"><RefreshCw className="h-4 w-4" /></button>
         <button type="button" onClick={() => setUploadOpen(true)} className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground transition-colors hover:bg-primary/90">上传文档</button>

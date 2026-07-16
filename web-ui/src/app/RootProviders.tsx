@@ -26,6 +26,7 @@ export function RootProviders({ children }: { children: ReactNode }) {
   return (
     <ConfigProvider
       locale={zhCN}
+      button={{ autoInsertSpace: false }}
       theme={{
         algorithm:
           theme === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,

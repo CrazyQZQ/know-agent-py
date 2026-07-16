@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { gsap } from "gsap";
 import { ArrowLeft, Check, CheckCircle2, Circle, Copy, Download, LoaderCircle, PanelRightClose, PanelRightOpen, XCircle } from "lucide-react";
 
@@ -7,7 +7,7 @@ import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatMessageRow } from "@/components/chat/ChatMessageRow";
 import { MarkdownText } from "@/components/MarkdownText";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
-import { Button } from "@/components/ui/button";
+import { Button } from "antd";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { getGraphTopology, listGraphs, type GraphNode } from "@/features/workflows/workflow-api";
 import { ApiError } from "@/lib/api-client";
@@ -90,7 +90,7 @@ function WorkflowInterruptForm({ form, values, onChange, onSubmit, onCancel }: {
         })}</div>}
       </div>;
     })}
-    <div className="flex flex-wrap gap-2 pt-1"><Button type="button" size="sm" disabled={missingRequired} onClick={onSubmit}>继续生成</Button><Button type="button" size="sm" variant="ghost" onClick={onCancel}>终止流程</Button></div>
+    <div className="flex flex-wrap gap-2 pt-1"><Button type="primary" size="small" disabled={missingRequired} onClick={onSubmit}>继续生成</Button><Button size="small" type="text" onClick={onCancel}>终止流程</Button></div>
   </div>;
 }
 
@@ -343,10 +343,10 @@ export function WorkflowRunPage() {
 
   return <div className="relative flex h-full min-h-0 flex-col bg-background">
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border/55 px-5">
-      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" asChild><Link to="/workflows" aria-label="返回工作流"><ArrowLeft className="h-4 w-4" /></Link></Button>
+      <Button type="text" className="h-8 w-8 rounded-full" aria-label="返回工作流" onClick={() => navigate("/workflows")}><ArrowLeft className="h-4 w-4" /></Button>
       <div className="min-w-0"><h1 className="truncate text-[15px] font-semibold">{workflowTitle}</h1><p className="text-xs text-muted-foreground">引导式工作台</p></div>
       <span className={cn("ml-2 rounded-full px-2.5 py-1 text-[11px] font-medium", status === "running" ? "bg-blue-500/10 text-blue-600" : status === "waiting" ? "bg-amber-500/10 text-amber-700" : status === "done" ? "bg-emerald-500/10 text-emerald-700" : status === "error" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>{STATUS_COPY[status]}</span>
-      <Button variant="ghost" size="icon" className="ml-auto h-8 w-8 rounded-full" aria-label={detailsOpen ? "收起运行详情" : "展开运行详情"} onClick={() => setDetailsOpen((value) => !value)}>{detailsOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}</Button>
+      <Button type="text" className="ml-auto h-8 w-8 rounded-full" aria-label={detailsOpen ? "收起运行详情" : "展开运行详情"} onClick={() => setDetailsOpen((value) => !value)}>{detailsOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}</Button>
     </header>
 
     <div className="flex min-h-0 flex-1">
@@ -369,13 +369,13 @@ export function WorkflowRunPage() {
         </section>
 
         <div className="shrink-0 border-t border-border/40 bg-background/95 px-4 pb-4 pt-3 backdrop-blur-sm md:px-8">
-          {status === "waiting" && !clarification?.form && clarification?.options.length ? <div className="mx-auto mb-2 flex max-w-[49.5rem] flex-wrap items-center gap-2 px-1">{clarification.options.map((option) => <Button key={option} variant="outline" size="sm" className="h-8 rounded-full bg-background" onClick={() => setInput(option)}>{option}</Button>)}<Button variant="ghost" size="sm" className="h-8 rounded-full text-muted-foreground" onClick={() => void resume({ clarificationResponse: "REJECTED" }, "终止本次流程")}>终止本次流程</Button></div> : null}
+          {status === "waiting" && !clarification?.form && clarification?.options.length ? <div className="mx-auto mb-2 flex max-w-[49.5rem] flex-wrap items-center gap-2 px-1">{clarification.options.map((option) => <Button key={option} size="small" className="h-8 rounded-full" onClick={() => setInput(option)}>{option}</Button>)}<Button type="text" size="small" className="h-8 rounded-full" onClick={() => void resume({ clarificationResponse: "REJECTED" }, "终止本次流程")}>终止本次流程</Button></div> : null}
           <ChatComposer value={input} onChange={setInput} onSend={send} isStreaming={status === "running"} onStop={stop} placeholder={status === "waiting" ? "补充信息以继续工作流" : "描述你想生成的演示文稿"} />
         </div>
       </main>
 
       <aside aria-label="运行详情" className={cn("border-l border-border/50 bg-background", detailsOpen ? "fixed inset-y-0 right-0 z-30 flex w-80 flex-col shadow-[-18px_0_50px_rgba(15,23,42,0.12)] xl:static xl:shadow-none" : "hidden xl:flex xl:w-72 xl:flex-col")}>
-        <div className="flex h-14 items-center border-b border-border/50 px-3"><button type="button" onClick={() => setDetailTab("details")} className={cn("h-8 rounded-full px-3 text-xs font-medium", detailTab === "details" ? "bg-muted" : "text-muted-foreground")}>运行详情</button><button type="button" onClick={() => setDetailTab("output")} className={cn("h-8 rounded-full px-3 text-xs font-medium", detailTab === "output" ? "bg-muted" : "text-muted-foreground")}>输出</button><Button variant="ghost" size="icon" className="ml-auto h-8 w-8 rounded-full xl:hidden" aria-label="关闭运行详情" onClick={() => setDetailsOpen(false)}><PanelRightClose className="h-4 w-4" /></Button></div>
+        <div className="flex h-14 items-center border-b border-border/50 px-3"><button type="button" onClick={() => setDetailTab("details")} className={cn("h-8 rounded-full px-3 text-xs font-medium", detailTab === "details" ? "bg-muted" : "text-muted-foreground")}>运行详情</button><button type="button" onClick={() => setDetailTab("output")} className={cn("h-8 rounded-full px-3 text-xs font-medium", detailTab === "output" ? "bg-muted" : "text-muted-foreground")}>输出</button><Button type="text" className="ml-auto h-8 w-8 rounded-full xl:hidden" aria-label="关闭运行详情" onClick={() => setDetailsOpen(false)}><PanelRightClose className="h-4 w-4" /></Button></div>
         {detailTab === "details" ? <div className="min-h-0 flex-1 overflow-y-auto"><dl className="divide-y divide-border/45 px-4 text-xs"><div className="py-4"><dt className="text-muted-foreground">运行状态</dt><dd className="mt-1 font-medium">{STATUS_COPY[status]}</dd></div><div className="py-4"><dt className="text-muted-foreground">运行 ID</dt><dd className="mt-1 break-all font-mono text-[11px]">{threadId}</dd></div><div className="py-4"><dt className="text-muted-foreground">开始时间</dt><dd className="mt-1 font-medium">{startedAt ? startedAt.toLocaleTimeString("zh-CN", { hour12: false }) : "-"}</dd></div><div className="py-4"><dt className="text-muted-foreground">已完成步骤</dt><dd className="mt-1 font-medium">{completedNodes.size} / {stepDefinitions.length}</dd></div></dl>{mermaidDefinition ? <div className="border-t border-border/45 p-4"><div className="mb-3 text-xs font-medium">流程拓扑</div><MermaidDiagram definition={mermaidDefinition} /></div> : null}</div> : <div className="min-h-0 flex-1 overflow-auto p-4">{selectedStep ? <><div className="mb-3 text-xs font-medium">{stepDefinitions.find((step) => step.id === selectedStep.node)?.label ?? selectedStep.node}</div><pre className="whitespace-pre-wrap break-words text-[11px] leading-5 text-muted-foreground">{JSON.stringify(selectedStep.values ?? {}, null, 2)}</pre></> : result ? <pre className="whitespace-pre-wrap break-words text-xs leading-5">{result}</pre> : <p className="text-xs text-muted-foreground">节点完成后在这里查看完整输出。</p>}</div>}
       </aside>
     </div>

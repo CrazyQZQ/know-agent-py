@@ -16,7 +16,7 @@ describe("document upload", () => {
     expect(screen.getByRole("combobox", { name: "知识库类型" })).toBeInTheDocument();
     expect(document.querySelector("select[multiple]")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /公开/ }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: /管理员/ })).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: /管理员/ })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
 
     const file = new File(["hello"], "技术方案.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
