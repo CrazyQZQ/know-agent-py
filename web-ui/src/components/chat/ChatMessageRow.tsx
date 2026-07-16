@@ -37,7 +37,7 @@ export function ChatMessageRow({ role, content, createdAt, isStreaming = false }
       variant={isUser ? "filled" : "borderless"}
       shape="default"
       footerPlacement="outer-end"
-      styles={{ footer: { marginTop: 4, justifyContent: isUser ? "flex-end" : "flex-start" } }}
+      styles={{ footer: { marginTop: 4, flexDirection: "row", justifyContent: isUser ? "flex-end" : "flex-start" } }}
       content={content}
       loading={showTyping}
       loadingRender={() => (
