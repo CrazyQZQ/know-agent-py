@@ -64,6 +64,16 @@ def _stream_agent(agent, inputs, config, last_event_id: int | None = None):
     for msg, _meta in agent.stream(inputs, config, stream_mode="messages"):
         content = getattr(msg, "content", None)
         msg_type = getattr(msg, "type", "")
+        # 工具调用 -> thinking 事件（供前端 ThoughtChain 展示思考步骤）
+        tool_calls = getattr(msg, "tool_calls", None) or []
+        if tool_calls and msg_type in ("AIMessageChunk", "AIMessage"):
+            for tc in tool_calls:
+                tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                if not tc_name:
+                    continue
+                event = {"event": "thinking", "data": json.dumps({"name": str(tc_name)}, ensure_ascii=False)}
+                eid = sse_store.append(thread_id, event)
+                yield {**event, "id": str(eid)}
         if not content:
             continue
         if msg_type in ("AIMessageChunk", "AIMessage"):
