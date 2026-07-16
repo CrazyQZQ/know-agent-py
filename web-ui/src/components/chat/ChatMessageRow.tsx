@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { Bubble } from "@ant-design/x";
 import { Check, Copy } from "lucide-react";
 
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { formatClock } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { MarkdownText } from "@/components/MarkdownText";
 
 export interface ChatMessageRowProps {
@@ -28,20 +28,26 @@ export function ChatMessageRow({ role, content, createdAt, isStreaming = false }
     resetRef.current = window.setTimeout(() => setCopied(false), 1_500);
   }
 
+  const isUser = role === "user";
+  const showTyping = !isUser && isStreaming && !content;
+
   return (
-    <article className={cn("group flex w-full gap-2", role === "user" ? "justify-end" : "justify-start")}>
-      <div className={cn("min-w-0 max-w-[min(85%,42rem)]", role === "user" && "items-end")}>
-        <div className={cn(
-          "whitespace-pre-wrap break-words text-sm leading-6",
-          role === "user" && "rounded-2xl bg-secondary px-4 py-2",
-        )}>
-          {role === "assistant" && isStreaming && !content ? (
-            <span aria-label="Assistant typing" className="inline-flex items-center gap-1 py-1">
-              {[0, 1, 2].map((index) => <span key={index} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60 motion-reduce:animate-none" style={{ animationDelay: `${index * 150}ms` }} />)}
-            </span>
-          ) : role === "assistant" ? <MarkdownText streaming={isStreaming}>{content}</MarkdownText> : content}
-        </div>
-        <div className={cn("mt-1 flex items-center gap-1 text-[11px] text-muted-foreground", role === "user" && "justify-end")}>
+    <Bubble
+      placement={isUser ? "end" : "start"}
+      variant={isUser ? "filled" : "borderless"}
+      shape="default"
+      content={content}
+      loading={showTyping}
+      loadingRender={() => (
+        <span aria-label="Assistant typing" className="inline-flex items-center gap-1 py-1">
+          {[0, 1, 2].map((index) => (
+            <span key={index} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60 motion-reduce:animate-none" style={{ animationDelay: `${index * 150}ms` }} />
+          ))}
+        </span>
+      )}
+      contentRender={(c) => (isUser ? c : <MarkdownText streaming={isStreaming}>{c as string}</MarkdownText>)}
+      footer={
+        <div className={`mt-1 flex items-center gap-1 text-[11px] text-muted-foreground ${isUser ? "justify-end" : ""}`}>
           <time dateTime={new Date(createdAt).toISOString()}>{formatClock(createdAt)}</time>
           <button
             type="button"
@@ -53,7 +59,7 @@ export function ChatMessageRow({ role, content, createdAt, isStreaming = false }
             {copied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
           </button>
         </div>
-      </div>
-    </article>
+      }
+    />
   );
 }

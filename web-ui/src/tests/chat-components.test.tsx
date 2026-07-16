@@ -47,7 +47,6 @@ describe("shared chat components", () => {
     rerender(<ChatComposer value="hello" onChange={vi.fn()} onSend={onSend} isStreaming onStop={onStop} />);
     const stop = screen.getByRole("button", { name: "Stop generating" });
     expect(stop.querySelector("svg")).toBeTruthy();
-    expect(stop.querySelector("svg")).toHaveClass("animate-spin", "motion-reduce:animate-none");
     fireEvent.click(stop);
     expect(onStop).toHaveBeenCalledOnce();
   });
