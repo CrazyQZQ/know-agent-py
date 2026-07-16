@@ -37,8 +37,15 @@ export function AppSidebar({ user, token = "", onLogout, onToggleTheme, mobileOp
   const loadSessions = useCallback(async () => {
     if (!isAssistant || !token) return;
     setLoading(true);
-    try { setSessions(await listAssistantSessions(user.name, token)); }
-    finally { setLoading(false); }
+    try {
+      const remote = await listAssistantSessions(user.name, token);
+      setSessions((prev) => {
+        // 保留本地"新对话"会话：后端 ensure_thread_meta 在首次发消息后才写入 agent_threads，
+        // 否则 list 不含新建会话，会覆盖本地状态导致重复点击新建仍创建
+        const localNew = prev.filter((s) => s.name === "新对话" && !remote.some((r) => r.thread_id === s.thread_id));
+        return [...localNew, ...remote];
+      });
+    } finally { setLoading(false); }
   }, [isAssistant, token, user.name]);
 
   useEffect(() => { void loadSessions(); }, [activeId, loadSessions]);
