@@ -37,6 +37,8 @@ export function RootProviders({ children }: { children: ReactNode }) {
             optionSelectedBg: "hsl(var(--accent))",
             optionSelectedColor: "hsl(var(--foreground))",
             optionActiveBg: "hsl(var(--accent))",
+            controlItemBgHover: "hsl(var(--accent))",
+            controlItemBgActive: "hsl(var(--accent))",
           },
         },
       }}

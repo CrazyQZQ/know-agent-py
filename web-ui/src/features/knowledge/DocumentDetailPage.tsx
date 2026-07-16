@@ -1,75 +1,84 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { Button, Descriptions, Empty, List, Popconfirm, Tag, Typography } from "antd";
+import { ArrowLeft, Trash2 } from "lucide-react";
+
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useEnterAnimation } from "@/lib/gsap-animations";
-import { apiRequest } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/format";
+import { deleteDocument, getDocument, listSegmentsByDocument, type DocumentDetail, type SegmentRow } from "./knowledge-api";
 
-type DocumentSegment = {
-  id?: string | number;
-  content?: string;
-};
-
-type DocumentDetail = {
-  title?: string;
-  status?: string;
-  updated_at?: string | number | null;
-  segments?: DocumentSegment[];
+const STATUS_COLOR: Record<string, string> = {
+  UPLOADED: "default",
+  CONVERTING: "warning",
+  CONVERTED: "processing",
+  CHUNKED: "cyan",
+  VECTOR_STORED: "success",
 };
 
 export function DocumentDetailPage() {
   const { auth } = useAuth();
-  const sectionRef = useEnterAnimation<HTMLElement>();
   const { documentId } = useParams();
   const navigate = useNavigate();
+  const sectionRef = useEnterAnimation<HTMLElement>();
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
+  const [segments, setSegments] = useState<SegmentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    if (documentId)
-      void apiRequest<DocumentDetail>(`/v1/api/document/${documentId}`, {
-        token: auth?.token,
-      }).then(setDoc);
+    if (!documentId) return;
+    const id = Number(documentId);
+    setLoading(true);
+    Promise.all([
+      getDocument(auth?.token ?? "", id),
+      listSegmentsByDocument(auth?.token ?? "", id),
+    ]).then(([d, segs]) => {
+      setDoc(d);
+      setSegments(segs ?? []);
+    }).finally(() => setLoading(false));
   }, [auth?.token, documentId]);
-  const remove = async () => {
-    await apiRequest(`/v1/api/document/${documentId}`, {
-      method: "DELETE",
-      token: auth?.token,
-    });
+
+  async function remove() {
+    await deleteDocument(auth?.token ?? "", Number(documentId));
     navigate("/knowledge");
-  };
+  }
+
   return (
     <section ref={sectionRef} className="p-5">
-      <div className="mb-4 flex items-center gap-3">
-        <Link to="/knowledge">返回</Link>
-        <h1 className="text-2xl font-semibold">文档详情</h1>
-        <button
-          type="button"
-          className="ml-auto text-destructive"
-          onClick={() => void remove()}
-        >
-          删除
-        </button>
+      <div className="mb-4 flex items-center gap-2">
+        <Button type="text" shape="circle" aria-label="返回" onClick={() => navigate("/knowledge")} icon={<ArrowLeft />} />
+        <h1 className="text-xl font-semibold">{doc?.doc_title ?? "文档详情"}</h1>
+        <Popconfirm title="确认删除该文档？" description="删除后无法恢复" onConfirm={() => void remove()} okText="删除" cancelText="取消" okButtonProps={{ danger: true }}>
+          <Button danger type="text" shape="circle" aria-label="删除文档" icon={<Trash2 className="h-4 w-4" />} className="ml-auto" />
+        </Popconfirm>
       </div>
-      {doc ? (
-        <>
-          <dl className="grid grid-cols-2 gap-3 rounded border p-4 text-sm">
-            <dt>标题</dt>
-            <dd>{doc.title}</dd>
-            <dt>状态</dt>
-            <dd>{doc.status}</dd>
-            <dt>更新时间</dt>
-            <dd>{formatDateTime(doc.updated_at)}</dd>
-          </dl>
-          <h2 className="mt-5 font-medium">分段</h2>
-          <ol className="mt-2 space-y-2">
-            {(doc.segments ?? []).map((segment, i) => (
-              <li key={segment.id ?? i} className="rounded border p-3 text-sm">
-                {segment.content}
-              </li>
-            ))}
-          </ol>
-        </>
-      ) : (
-        <p>加载中</p>
+
+      <Descriptions bordered column={2} size="small">
+        <Descriptions.Item label="状态">{doc ? <Tag color={STATUS_COLOR[doc.status] ?? "default"}>{doc.status}</Tag> : "-"}</Descriptions.Item>
+        <Descriptions.Item label="知识库类型">{doc?.knowledge_base_type ?? "-"}</Descriptions.Item>
+        <Descriptions.Item label="上传人">{doc?.upload_user ?? "-"}</Descriptions.Item>
+        <Descriptions.Item label="更新时间">{doc ? formatDateTime(doc.updated_at) : "-"}</Descriptions.Item>
+        <Descriptions.Item label="描述" span={2}>{doc?.description || "-"}</Descriptions.Item>
+      </Descriptions>
+
+      <div className="mb-3 mt-6 flex items-center justify-between">
+        <h2 className="text-base font-medium">分段内容</h2>
+        <span className="text-xs text-muted-foreground">共 {segments.length} 段</span>
+      </div>
+      {loading ? <Empty description="加载中..." /> : segments.length === 0 ? <Empty description="暂无分段" /> : (
+        <List
+          dataSource={segments}
+          renderItem={(seg, index) => (
+            <List.Item key={seg.id} className="block!">
+              <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <Tag>{index + 1}</Tag>
+                <span>chunk_order: {seg.chunk_order}</span>
+                {seg.status ? <Tag color={STATUS_COLOR[seg.status] ?? "default"}>{seg.status}</Tag> : null}
+              </div>
+              <Typography.Paragraph className="mb-0 text-sm" ellipsis={{ rows: 4, expandable: true, symbol: "展开" }}>{seg.text}</Typography.Paragraph>
+            </List.Item>
+          )}
+        />
       )}
     </section>
   );
