@@ -17,6 +17,13 @@ const QUICK_PROMPTS = [
   { key: "draft", icon: <PenLine className="h-4 w-4" />, label: "起草邮件", description: "撰写商务邮件初稿" },
 ];
 
+const SUGGESTIONS = [
+  { label: "总结周报", value: "帮我总结本周工作周报", icon: <FileText className="h-4 w-4" /> },
+  { label: "解释概念", value: "请用通俗的语言解释一个概念", icon: <Lightbulb className="h-4 w-4" /> },
+  { label: "制定计划", value: "帮我制定一份项目计划", icon: <Sparkles className="h-4 w-4" /> },
+  { label: "起草邮件", value: "帮我起草一封商务邮件", icon: <PenLine className="h-4 w-4" /> },
+];
+
 export function AssistantPage() {
   const { auth } = useAuth();
   const sectionRef = useEnterAnimation<HTMLElement>();
@@ -153,6 +160,6 @@ export function AssistantPage() {
         <div ref={messageEndRef} aria-hidden />
       </div>
     </div>
-    <div className="px-4 pb-4 md:px-8"><ChatComposer value={draft} onChange={setDraft} onSend={(value) => void send(value)} isStreaming={streaming} onStop={stop} /></div>
+    <div className="px-4 pb-4 md:px-8"><ChatComposer value={draft} onChange={setDraft} onSend={(value) => void send(value)} isStreaming={streaming} onStop={stop} suggestions={SUGGESTIONS} /></div>
   </section>;
 }

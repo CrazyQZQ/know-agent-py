@@ -326,3 +326,14 @@
     }
   }
 }
+
+/* X Sender: 保留外围圆角边框，去掉内部 textarea 的矩形边框与 focus 光环 */
+.ant-sender .ant-input,
+.ant-sender textarea,
+.ant-sender .ant-input:focus,
+.ant-sender textarea:focus {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent !important;
+}

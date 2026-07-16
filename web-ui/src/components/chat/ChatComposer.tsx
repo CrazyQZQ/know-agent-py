@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Button, Input } from "antd";
-import { Sender } from "@ant-design/x";
+import { Sender, Suggestion } from "@ant-design/x";
 import { LoaderCircle } from "lucide-react";
 
 // 用 antd Input.TextArea 替换 Sender 默认输入，固定 aria-label="Message"
@@ -11,6 +11,12 @@ const MessageInput = React.forwardRef<
 >(({ ...props }, ref) => <Input.TextArea {...props} ref={ref} aria-label="Message" variant="borderless" />);
 MessageInput.displayName = "MessageInput";
 
+export interface ChatSuggestionItem {
+  label: React.ReactNode;
+  value: string;
+  icon?: React.ReactNode;
+}
+
 export interface ChatComposerProps {
   value: string;
   onChange: (value: string) => void;
@@ -19,6 +25,7 @@ export interface ChatComposerProps {
   onStop?: () => void;
   disabled?: boolean;
   placeholder?: string;
+  suggestions?: ChatSuggestionItem[];
 }
 
 export function ChatComposer({
@@ -29,12 +36,16 @@ export function ChatComposer({
   onStop,
   disabled = false,
   placeholder = "Message",
+  suggestions,
 }: ChatComposerProps) {
-  return (
+  const renderSender = (onTrigger?: (info?: unknown) => void) => (
     <Sender
       value={value}
-      onChange={(value) => onChange(value)}
-      onSubmit={(value) => onSend(value)}
+      onChange={(v) => {
+        onChange(v);
+        onTrigger?.();
+      }}
+      onSubmit={(v) => onSend(v)}
       loading={isStreaming}
       onCancel={onStop}
       disabled={disabled || isStreaming}
@@ -48,5 +59,17 @@ export function ChatComposer({
           : <info.components.SendButton aria-label="Send message" disabled={disabled || !value.trim()} />
       }
     />
+  );
+
+  if (!suggestions?.length) return renderSender();
+
+  return (
+    <Suggestion
+      items={suggestions}
+      onSelect={(v) => onChange(v)}
+      block
+    >
+      {({ onTrigger }) => renderSender(onTrigger)}
+    </Suggestion>
   );
 }

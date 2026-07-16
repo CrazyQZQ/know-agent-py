@@ -32,6 +32,13 @@ export function RootProviders({ children }: { children: ReactNode }) {
           theme === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         cssVar: {},
         token: sharedToken,
+        components: {
+          Select: {
+            optionSelectedBg: "hsl(var(--accent))",
+            optionSelectedColor: "hsl(var(--foreground))",
+            optionActiveBg: "hsl(var(--accent))",
+          },
+        },
       }}
     >
       <XProvider locale={zhCNX}>{children}</XProvider>
