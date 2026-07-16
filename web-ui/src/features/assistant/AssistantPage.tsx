@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Prompts, Sources, Think, ThoughtChain, Welcome } from "@ant-design/x";
 import { Bot, FileText, Lightbulb, PenLine, Sparkles } from "lucide-react";
@@ -162,7 +162,17 @@ export function AssistantPage() {
   return <section ref={sectionRef} className="flex h-full min-w-0 flex-1 flex-col">
     <div className="flex-1 space-y-4 overflow-y-auto px-5 py-6 md:px-10">
       <div className="mx-auto max-w-[49.5rem]">
-        {messages.map((message, index) => <ChatMessageRow key={message.id ?? `${index}-${message.role}`} {...message} createdAt={message.createdAt ?? 0} isStreaming={streaming && index === messages.length - 1 && message.role === "assistant"} />)}
+        {messages.map((message, index) => {
+          const isLastAssistant = index === messages.length - 1 && message.role === "assistant";
+          return (
+            <Fragment key={message.id ?? `${index}-${message.role}`}>
+              {isLastAssistant && thinkingSteps.length > 0 ? <ThoughtChain items={thinkingSteps} className="mb-2" /> : null}
+              {isLastAssistant && streaming && !message.content ? <Think loading title="正在思考" defaultExpanded className="mb-2" /> : null}
+              <ChatMessageRow {...message} createdAt={message.createdAt ?? 0} isStreaming={streaming && isLastAssistant} />
+              {isLastAssistant && sources.length > 0 ? <Sources title="知识库来源" items={sources} className="mt-2" /> : null}
+            </Fragment>
+          );
+        })}
         {approval ? <ToolApproval title={approval.title} description={approval.description} onApprove={() => void decideApproval("APPROVED")} onReject={() => void decideApproval("REJECTED")} /> : null}
         {messages.length === 0 && !approval ? (
           <div className="flex min-h-[55vh] flex-col items-center justify-center gap-6">
@@ -170,9 +180,6 @@ export function AssistantPage() {
             <Prompts className="w-full max-w-2xl" items={QUICK_PROMPTS} onItemClick={({ data }) => void send(String(data.label))} wrap fadeIn />
           </div>
         ) : null}
-        {sources.length > 0 ? <Sources title="知识库来源" items={sources} className="mb-2" /> : null}
-        {thinkingSteps.length > 0 ? <ThoughtChain items={thinkingSteps} className="mb-2" /> : null}
-        {streaming ? <Think loading title="正在思考" defaultExpanded className="mb-2" /> : null}
         <div ref={messageEndRef} aria-hidden />
       </div>
     </div>
