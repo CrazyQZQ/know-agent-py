@@ -40,10 +40,10 @@ class RagPipeline:
         self.top_k = s.rag_top_k
         self.candidate_pool = s.rag_candidate_pool
 
-    def run(self, query: str, top_k: int | None = None, roles: list[str] | None = None,
+    def run_with_sources(self, query: str, top_k: int | None = None, roles: list[str] | None = None,
             knowledge_base_type: str | None = None, filter: dict | None = None,
-            current_user: str | None = None) -> str:
-        """执行完整 RAG 流程，返回带引用标注的上下文文本."""
+            current_user: str | None = None) -> tuple[str, list[dict]]:
+        """执行完整 RAG 流程，返回 (带引用标注的上下文文本, 结构化来源列表)."""
         top_k = top_k or self.top_k
         logger.info("[rag] 开始检索: query={!r} top_k={} roles={} kb={} filter={} user={}",
                     query[:80], top_k, roles, knowledge_base_type, filter, current_user)
@@ -58,10 +58,29 @@ class RagPipeline:
             current_user=current_user,
         )
         if not candidates:
-            return "未检索到相关信息。"
+            return "未检索到相关信息。", []
 
         # ③ 重排序（cross-encoder，可降级）
         ranked = self.reranker.rerank(query, candidates, top_k=top_k)
 
-        # ④ 内容注入
-        return inject(ranked)
+        # ④ 内容注入 + 来源提取
+        return inject(ranked), self._extract_sources(ranked)
+
+    def run(self, query: str, top_k: int | None = None, roles: list[str] | None = None,
+            knowledge_base_type: str | None = None, filter: dict | None = None,
+            current_user: str | None = None) -> str:
+        """执行完整 RAG 流程，返回带引用标注的上下文文本."""
+        text, _ = self.run_with_sources(query, top_k, roles, knowledge_base_type, filter, current_user)
+        return text
+
+    def _extract_sources(self, ranked) -> list[dict]:
+        """从检索结果提取结构化来源（供前端 Sources 组件展示）."""
+        sources: list[dict] = []
+        for r in ranked:
+            meta = r.metadata or {}
+            sources.append({
+                "title": meta.get("fileName") or meta.get("file_name") or meta.get("doc_title") or "未知文档",
+                "segment_id": r.segment_id,
+                "score": r.score,
+            })
+        return sources

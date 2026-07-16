@@ -25,16 +25,19 @@ def knowledge_base_search(query: str, top_k: int = 5, knowledge_base_type: str |
         top_k: 返回的文档片段数量，默认 5
         knowledge_base_type: 知识库类型（如 DOCUMENT_SEARCH），按类型隔离向量检索；None 用默认 collection
     """
-    from know_agent.core.request_context import get_current_roles, get_current_user
+    from know_agent.core.request_context import get_current_roles, get_current_user, set_rag_sources
     from know_agent.db.postgres import SessionLocal
     from know_agent.services.document.rag.pipeline import RagPipeline
     from know_agent.services.document.search import SearchService
 
     db = SessionLocal()
     try:
-        return RagPipeline(SearchService(db)).run(
+        text, sources = RagPipeline(SearchService(db)).run_with_sources(
             query, top_k=top_k, roles=get_current_roles(), knowledge_base_type=knowledge_base_type,
             current_user=get_current_user(),
         )
+        # 旁路存来源，供 agent SSE 发给前端 Sources 组件
+        set_rag_sources(sources)
+        return text
     finally:
         db.close()

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Prompts, Think, ThoughtChain, Welcome } from "@ant-design/x";
+import { Prompts, Sources, Think, ThoughtChain, Welcome } from "@ant-design/x";
 import { Bot, FileText, Lightbulb, PenLine, Sparkles } from "lucide-react";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
@@ -36,6 +36,7 @@ export function AssistantPage() {
   const [streaming, setStreaming] = useState(false);
   const [approval, setApproval] = useState<{ id: string; title: string; description?: string } | null>(null);
   const [thinkingSteps, setThinkingSteps] = useState<Array<{ key: string; title: string; status: "success" | "loading" }>>([]);
+  const [sources, setSources] = useState<Array<{ key: string; title: string; description?: string }>>([]);
   const abortRef = useRef<AbortController | null>(null);
   const skipHistoryThreadRef = useRef<string | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
@@ -66,6 +67,7 @@ export function AssistantPage() {
     setDraft("");
     setStreaming(true);
     setThinkingSteps([]);
+    setSources([]);
     const controller = new AbortController();
     abortRef.current = controller;
     const replyId = crypto.randomUUID();
@@ -97,6 +99,11 @@ export function AssistantPage() {
             try {
               const data = JSON.parse(event.data) as { name?: string };
               if (data.name) setThinkingSteps((prev) => [...prev, { key: `${data.name}-${prev.length}`, title: `调用工具：${data.name}`, status: "success" }]);
+            } catch { /* ignore */ }
+          } else if (event.event === "sources") {
+            try {
+              const data = JSON.parse(event.data) as Array<{ title?: string; segment_id?: number; score?: number }>;
+              setSources(data.map((s, i) => ({ key: String(s.segment_id ?? i), title: s.title ?? "未知文档", description: s.score != null ? `相关度: ${s.score.toFixed(3)}` : undefined })));
             } catch { /* ignore */ }
           } else if (event.event === "interrupt" || event.event === "tool") {
             try {
@@ -163,6 +170,7 @@ export function AssistantPage() {
             <Prompts className="w-full max-w-2xl" items={QUICK_PROMPTS} onItemClick={({ data }) => void send(String(data.label))} wrap fadeIn />
           </div>
         ) : null}
+        {sources.length > 0 ? <Sources title="知识库来源" items={sources} className="mb-2" /> : null}
         {thinkingSteps.length > 0 ? <ThoughtChain items={thinkingSteps} className="mb-2" /> : null}
         {streaming ? <Think loading title="正在思考" defaultExpanded className="mb-2" /> : null}
         <div ref={messageEndRef} aria-hidden />

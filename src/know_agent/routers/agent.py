@@ -13,6 +13,7 @@ from know_agent.agents.memory import extract_memories, search_memories
 from know_agent.agents.react_agent import AGENT_NAME, TOOL_CALL_LIMIT, get_react_agent
 from know_agent.configuration import get_settings
 from know_agent.core.limiter import limiter
+from know_agent.core.request_context import get_rag_sources, set_rag_sources
 from know_agent.core.sse_store import parse_last_event_id, sse_store
 from know_agent.schemas.agent import AgentRunRequest, AgentResumeRequest
 
@@ -80,6 +81,13 @@ def _stream_agent(agent, inputs, config, last_event_id: int | None = None):
             event = {"event": "message", "data": content}
         elif msg_type == "ToolMessage":
             event = {"event": "tool", "data": content}
+            # 旁路发送 RAG 检索来源（工具内写入 contextvar）
+            sources = get_rag_sources()
+            if sources:
+                sources_event = {"event": "sources", "data": json.dumps(sources, ensure_ascii=False)}
+                eid_s = sse_store.append(thread_id, sources_event)
+                yield {**sources_event, "id": str(eid_s)}
+                set_rag_sources([])
         else:
             continue
         eid = sse_store.append(thread_id, event)

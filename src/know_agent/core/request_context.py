@@ -18,6 +18,10 @@ user_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 roles_var: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar(
     "roles", default=None
 )
+# RAG 检索来源（工具内写入，agent SSE 旁路读取发给前端 Sources 组件）
+rag_sources_var: contextvars.ContextVar[list[dict] | None] = contextvars.ContextVar(
+    "rag_sources", default=None
+)
 
 
 def get_request_id() -> str | None:
@@ -55,3 +59,15 @@ def set_current_roles(roles: list[str] | None) -> contextvars.Token[list[str] | 
 
 def reset_current_roles(token: contextvars.Token[list[str] | None]) -> None:
     roles_var.reset(token)
+
+
+def get_rag_sources() -> list[dict]:
+    return rag_sources_var.get() or []
+
+
+def set_rag_sources(sources: list[dict] | None) -> contextvars.Token[list[dict] | None]:
+    return rag_sources_var.set(sources or [])
+
+
+def reset_rag_sources(token: contextvars.Token[list[dict] | None]) -> None:
+    rag_sources_var.reset(token)
