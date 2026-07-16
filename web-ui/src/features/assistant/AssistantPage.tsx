@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { Prompts, Think, Welcome } from "@ant-design/x";
+import { Bot, FileText, Lightbulb, PenLine, Sparkles } from "lucide-react";
 
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatMessageRow } from "@/components/chat/ChatMessageRow";
@@ -7,6 +9,13 @@ import { ToolApproval } from "@/components/chat/ToolApproval";
 import { useEnterAnimation } from "@/lib/gsap-animations";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { createAssistantSession, getAssistantHistory, resumeAssistant, runAssistant, type AssistantMessage } from "./assistant-api";
+
+const QUICK_PROMPTS = [
+  { key: "summary", icon: <FileText className="h-4 w-4" />, label: "总结本周工作", description: "生成本周工作周报" },
+  { key: "explain", icon: <Lightbulb className="h-4 w-4" />, label: "解释一个概念", description: "通俗易懂地解释复杂概念" },
+  { key: "plan", icon: <Sparkles className="h-4 w-4" />, label: "制定计划", description: "规划项目里程碑与任务" },
+  { key: "draft", icon: <PenLine className="h-4 w-4" />, label: "起草邮件", description: "撰写商务邮件初稿" },
+];
 
 export function AssistantPage() {
   const { auth } = useAuth();
@@ -134,7 +143,13 @@ export function AssistantPage() {
       <div className="mx-auto max-w-[49.5rem]">
         {messages.map((message, index) => <ChatMessageRow key={message.id ?? `${index}-${message.role}`} {...message} createdAt={message.createdAt ?? 0} isStreaming={streaming && index === messages.length - 1 && message.role === "assistant"} />)}
         {approval ? <ToolApproval title={approval.title} description={approval.description} onApprove={() => void decideApproval("APPROVED")} onReject={() => void decideApproval("REJECTED")} /> : null}
-        {!threadId ? <div className="flex min-h-[55vh] items-center justify-center text-sm text-muted-foreground">从左侧新建或选择一个对话</div> : null}
+        {!threadId && messages.length === 0 ? (
+          <div className="flex min-h-[55vh] flex-col items-center justify-center gap-6">
+            <Welcome variant="borderless" icon={<Bot className="h-12 w-12 text-primary" />} title="你好，我是智能助理" description="我可以帮你总结文档、解释概念、制定计划。选择一个提示开始，或直接输入你的问题。" />
+            <Prompts className="w-full max-w-2xl" items={QUICK_PROMPTS} onItemClick={({ data }) => void send(String(data.label))} wrap fadeIn />
+          </div>
+        ) : null}
+        {streaming ? <Think loading title="正在思考" defaultExpanded className="mb-2" /> : null}
         <div ref={messageEndRef} aria-hidden />
       </div>
     </div>
